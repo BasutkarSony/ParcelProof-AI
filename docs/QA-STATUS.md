@@ -1,5 +1,16 @@
 # QA Status — 4 November 2026
 
+## Current CI verification — 5 November 2026
+
+The repository's GitHub Actions run [41898942314](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/41898942314) completed successfully on the published `main` branch. It passed:
+
+- Backend unit tests.
+- Frontend tests, lint and production build.
+- Docker deployment image build.
+
+This successful CI run supersedes the earlier environment-specific test/build limitations described below for those CI checks. It does **not** establish that live external integrations or a hosted deployment work. In particular, no successful PayPal Sandbox checkout/capture, real Gemini API inspection, hosted deployment, or persistence-across-restart test has been demonstrated. PayPal tracking writes remain disabled by default.
+
+
 This is the result of checking the supplied `ParcelProof-AI-final.zip` in the available execution environment. It is not a claim that the deployed application has passed its release gate.
 
 ## Backend
