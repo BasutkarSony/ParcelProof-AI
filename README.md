@@ -117,33 +117,20 @@ Frontend: `http://localhost:5173`
 
 The local Vite app uses `http://127.0.0.1:8000` for API requests. In production, the frontend uses the same origin as the FastAPI service.
 
-## Create the clean GitHub repository
+## Repository
 
-To avoid carrying the old branch history into the final submission, the repository includes a PowerShell script that creates a **new public repository with one clean `main` branch and one initial snapshot commit**.
-
-Requirements: Git, [GitHub CLI](https://cli.github.com/), and a GitHub CLI login. Run `gh auth login` once if needed.
-
-From the root of the current project folder, run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create-clean-repo.ps1
-```
-
-The script copies the **current working folder**, including uncommitted source changes, into a separate `ParcelProof-AI` folder beside the current project. It then creates `BasutkarSony/ParcelProof-AI`, initializes a clean `main` branch, and pushes the snapshot. It does not switch branches or change the original ShipProof-AI repository.
-
-The script excludes `.git`, local `.env` files, SQLite databases, uploaded inspection photos, virtual environments, Node dependencies, build outputs and caches. It preserves `.env.example`.
+The submission repository is already published at [github.com/BasutkarSony/ParcelProof-AI](https://github.com/BasutkarSony/ParcelProof-AI). Clone it using the instructions in **Run locally**. The legacy repository-creation script is not part of the current setup or deployment process.
 
 ## Deploy to Render
 
 A single Docker service serves both the built React frontend and FastAPI API from one public URL. The repository includes `Dockerfile` and `render.yaml`; Render reads these through a Blueprint.
 
-1. Create the clean `ParcelProof-AI` repository using the script above.
-2. Sign in to [Render](https://render.com/).
-3. Choose **New + → Blueprint** and connect `BasutkarSony/ParcelProof-AI`.
-4. Review the `parcelproof-ai` service and confirm the deployment.
-5. Enter the PayPal Sandbox Client ID, PayPal Sandbox Secret and Gemini API key when Render prompts for them.
-6. After deployment, optionally add `OPENAI_API_KEY` in the service's Environment page to enable automatic vision fallback.
-7. Open the Render service URL and confirm `/health` returns `{"status":"ok"}`.
+1. Sign in to [Render](https://render.com/).
+2. Choose **New + → Blueprint** and connect the existing `BasutkarSony/ParcelProof-AI` repository.
+3. Review the `parcelproof-ai` service and its paid plan and persistent-disk charges before confirming. Do not approve deployment unless you accept the recurring cost.
+4. Enter the PayPal Sandbox Client ID, PayPal Sandbox Secret and Gemini API key when Render prompts for them.
+5. After deployment, optionally add `OPENAI_API_KEY` in the service's Environment page to enable automatic vision fallback.
+6. Open the Render service URL and confirm `/health` returns `{"status":"ok"}`.
 
 ### Hosting and storage
 
@@ -250,7 +237,6 @@ ParcelProof-AI/
 │   ├── MERCHANT-USER-MANUAL.md
 │   ├── RELEASE-GATE.md
 │   └── DEMO-SCRIPT.md
-├── scripts/create-clean-repo.ps1
 ├── Dockerfile
 ├── render.yaml
 ├── .dockerignore
