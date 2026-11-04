@@ -4,13 +4,13 @@ Use this checklist against the deployed judge environment. A green unit-test sui
 
 ## A. Build and repository
 
-- [ ] Public repository opens without authentication.
+- [x] Public repository opens without authentication.
 - [ ] Repository contains source, `README.md`, this manual, `.env.example`, tests and an open-source licence.
 - [ ] No `.env`, API keys, database files, buyer data, uploaded photos, `node_modules`, build output or local virtual environment is committed.
-- [ ] GitHub Actions backend tests pass.
-- [ ] GitHub Actions frontend tests pass.
-- [ ] GitHub Actions lint and production build pass.
-- [ ] Docker image builds successfully.
+- [x] GitHub Actions backend tests pass.
+- [x] GitHub Actions frontend tests pass.
+- [x] GitHub Actions lint and production build pass.
+- [x] Docker image builds successfully.
 
 ## B. Hosted demo and access
 
