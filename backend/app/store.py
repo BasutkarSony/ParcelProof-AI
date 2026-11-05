@@ -194,6 +194,7 @@ def init_db() -> None:
         _ensure_column(conn, "orders", "shipping_address", "TEXT NOT NULL DEFAULT '{}'")
         _ensure_column(conn, "order_items", "fragile", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "manifest_items", "source_order_item_id", "TEXT")
+        _ensure_column(conn, "inspection_photos", "storage_path", "TEXT")
         _ensure_column(conn, "shipments", "buyer_name", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(
             conn, "shipments", "tracking_submission_status",
@@ -931,8 +932,8 @@ def create_inspection(
                 conn.execute(
                     """
                     INSERT INTO inspection_photos
-                        (id, inspection_id, sha256, mime_type, size_bytes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (id, inspection_id, sha256, mime_type, size_bytes, storage_path, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         photo["id"],
@@ -940,6 +941,7 @@ def create_inspection(
                         photo["sha256"],
                         photo["mime_type"],
                         photo["size_bytes"],
+                        photo.get("storage_path"),
                         now,
                     ),
                 )
@@ -966,7 +968,7 @@ def get_inspection(inspection_id: str) -> dict | None:
                 pass
         photo_rows = conn.execute(
             """
-            SELECT id, sha256, mime_type, size_bytes, created_at
+            SELECT id, sha256, mime_type, size_bytes, storage_path, created_at
             FROM inspection_photos WHERE inspection_id = ?
             ORDER BY rowid
             """,
