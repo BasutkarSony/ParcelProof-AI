@@ -213,9 +213,7 @@ class PhotoValidationTests(unittest.TestCase):
             }],
         }
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tf:
-            tf.write(_make_jpeg())
-            photo_path = tf.name
+        photo_bytes = _make_jpeg()
 
         payload = {
             "choices": [{
@@ -232,7 +230,7 @@ class PhotoValidationTests(unittest.TestCase):
 
         try:
             photo_metas = [
-                {"id": f"photo-{index}", "path": photo_path, "mime_type": "image/jpeg"}
+                {"id": f"photo-{index}", "data": photo_bytes, "mime_type": "image/jpeg"}
                 for index in range(5)
             ]
             with patch.dict(os.environ, {
@@ -271,8 +269,7 @@ class PhotoValidationTests(unittest.TestCase):
             ))
             self.assertTrue(request_payload["response_format"]["json_schema"]["strict"])
         finally:
-            if os.path.exists(photo_path):
-                os.unlink(photo_path)
+            pass
 
     def test_openai_fallback_can_run_when_gemini_key_is_not_configured(self):
         """OpenAI can be selected automatically when it is the only configured provider."""
