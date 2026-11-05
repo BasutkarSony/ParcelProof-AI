@@ -47,7 +47,11 @@ def _object_url(base_url: str, bucket: str, object_path: str) -> str:
 
 
 def _headers(secret: str, content_type: str | None = None) -> dict[str, str]:
-    headers = {"Authorization": f"Bearer {secret}", "apikey": secret}
+    # New sb_secret_* keys are opaque API keys, not JWTs: send them only in
+    # apikey. Legacy service_role keys are JWTs and also need Bearer auth.
+    headers = {"apikey": secret}
+    if not secret.startswith("sb_secret_"):
+        headers["Authorization"] = f"Bearer {secret}"
     if content_type:
         headers["Content-Type"] = content_type
     return headers
