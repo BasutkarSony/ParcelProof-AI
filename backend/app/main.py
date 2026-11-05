@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.validator import validate_order
 from app.ai_analyzer import analyze_shipment_evidence
+from app import object_storage
 from app.paypal_client import (
     configured as paypal_configured,
     submissions_enabled as paypal_submissions_enabled,
@@ -913,6 +914,7 @@ async def create_packing_inspection(
     # Track stored paths so we can delete them if any later step fails.
     photo_metas: list[dict] = []
     stored_paths: list = []
+    stored_objects: list[str] = []
 
     async def _cleanup_stored():
         """Delete every photo file stored so far in this request."""
@@ -920,6 +922,12 @@ async def create_packing_inspection(
             try:
                 Path(p).unlink(missing_ok=True)
             except OSError:
+                pass
+        for object_path in stored_objects:
+            try:
+                object_storage.delete_private_object(object_path)
+            except object_storage.StorageOperationError:
+                # Best-effort rollback; never mask the original inspection error.
                 pass
 
     for upload in photos:
@@ -951,8 +959,25 @@ async def create_packing_inspection(
             await _cleanup_stored()
             raise HTTPException(status_code=422, detail=str(exc))
 
+        if os.getenv("SUPABASE_URL", "").strip():
+            extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[meta["mime_type"]]
+            object_path = f"{manifest_id}/{meta['id']}{extension}"
+            try:
+                object_storage.upload_private_object(object_path, raw, meta["mime_type"])
+            except object_storage.StorageConfigurationError as exc:
+                await _cleanup_stored()
+                raise HTTPException(status_code=503, detail=str(exc))
+            except object_storage.StorageOperationError as exc:
+                await _cleanup_stored()
+                raise HTTPException(status_code=502, detail=str(exc))
+            stored_objects.append(object_path)
+            meta["storage_path"] = object_path
+            meta["data"] = raw
+            Path(meta["path"]).unlink(missing_ok=True)
+            meta.pop("path", None)
+        else:
+            stored_paths.append(meta["path"])
         photo_metas.append(meta)
-        stored_paths.append(meta["path"])
 
     # 4. Run Gemini inspection; clean up photos on failure.
     try:
@@ -971,6 +996,7 @@ async def create_packing_inspection(
             "sha256": m["sha256"],
             "mime_type": m["mime_type"],
             "size_bytes": m["size_bytes"],
+            "storage_path": m.get("storage_path"),
         }
         for m in photo_metas
     ]
@@ -1089,6 +1115,22 @@ def get_inspection_photo(inspection_id: str, photo_id: str):
     extension = extension_by_mime.get(photo.get("mime_type"))
     if extension is None:
         raise HTTPException(status_code=415, detail="Stored photo type is not supported.")
+
+    if photo.get("storage_path"):
+        try:
+            photo_bytes = object_storage.download_private_object(photo["storage_path"])
+        except object_storage.StorageConfigurationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        except object_storage.StorageOperationError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        return Response(
+            content=photo_bytes,
+            media_type=photo["mime_type"],
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     photo_path = packing_inspector_service.PHOTO_DIR / f"{photo_id}{extension}"
     if not photo_path.is_file():
