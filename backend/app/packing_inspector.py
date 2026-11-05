@@ -347,7 +347,7 @@ def _run_openai_inspection(manifest: dict, photo_metas: list[dict], api_key: str
     model = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
     image_parts = []
     for meta in photo_metas:
-        raw = Path(meta["path"]).read_bytes()
+        raw = meta.get("data") if isinstance(meta.get("data"), bytes) else Path(meta["path"]).read_bytes()
         encoded = base64.b64encode(raw).decode("ascii")
         image_parts.append({
             "type": "image_url",
@@ -572,7 +572,7 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
     prompt_text = _build_prompt(manifest)
     contents: list = [prompt_text]
     for meta in photo_metas:
-        raw = Path(meta["path"]).read_bytes()
+        raw = meta.get("data") if isinstance(meta.get("data"), bytes) else Path(meta["path"]).read_bytes()
         contents.append(
             types.Part.from_bytes(data=raw, mime_type=meta["mime_type"])
         )
