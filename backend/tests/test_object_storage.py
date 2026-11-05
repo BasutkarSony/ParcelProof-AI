@@ -12,7 +12,7 @@ class SupabasePrivateStorageTests(unittest.TestCase):
     def setUp(self):
         self.env = patch.dict(os.environ, {
             "SUPABASE_URL": "https://example.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-secret",
+            "SUPABASE_SECRET_KEY": "sb_secret_test-secret",
             "SUPABASE_STORAGE_BUCKET": "inspection-photos",
         })
         self.env.start()
@@ -30,9 +30,15 @@ class SupabasePrivateStorageTests(unittest.TestCase):
             args[0],
             "https://example.supabase.co/storage/v1/object/inspection-photos/inspection-1/photo-1.jpg",
         )
-        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-secret")
+        self.assertEqual(kwargs["headers"]["apikey"], "sb_secret_test-secret")
+        self.assertNotIn("Authorization", kwargs["headers"])
         self.assertEqual(kwargs["headers"]["x-upsert"], "false")
         self.assertEqual(kwargs["data"], b"image-bytes")
+
+    def test_legacy_service_role_jwt_keeps_bearer_header(self):
+        headers = object_storage._headers("eyJlegacy-service-role-jwt")
+        self.assertEqual(headers["apikey"], "eyJlegacy-service-role-jwt")
+        self.assertEqual(headers["Authorization"], "Bearer eyJlegacy-service-role-jwt")
 
     @patch("app.object_storage.requests.get")
     def test_download_returns_raw_bytes(self, get):
