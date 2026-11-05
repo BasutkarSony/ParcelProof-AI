@@ -960,6 +960,8 @@ async def create_packing_inspection(
             raise HTTPException(status_code=422, detail=str(exc))
 
         if os.getenv("SUPABASE_URL", "").strip():
+            # Track the temporary local copy immediately so every failure path cleans it.
+            stored_paths.append(meta["path"])
             extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[meta["mime_type"]]
             object_path = f"{manifest_id}/{meta['id']}{extension}"
             try:
@@ -974,6 +976,7 @@ async def create_packing_inspection(
             meta["storage_path"] = object_path
             meta["data"] = raw
             Path(meta["path"]).unlink(missing_ok=True)
+            stored_paths.remove(meta["path"])
             meta.pop("path", None)
         else:
             stored_paths.append(meta["path"])
