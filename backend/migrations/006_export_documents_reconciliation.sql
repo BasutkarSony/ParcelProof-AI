@@ -41,9 +41,4 @@ ALTER TABLE reconciliation_runs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE shipment_documents FROM PUBLIC;
 REVOKE ALL ON TABLE reconciliation_runs FROM PUBLIC;
 
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('shipment-documents', 'shipment-documents', false, 10485760,
-        ARRAY['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
-ON CONFLICT (id) DO UPDATE
-SET public = false, file_size_limit = EXCLUDED.file_size_limit,
-    allowed_mime_types = EXCLUDED.allowed_mime_types;
+-- The private shipment-documents bucket is provisioned separately in Supabase Storage.
