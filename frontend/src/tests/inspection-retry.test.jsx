@@ -85,7 +85,7 @@ describe('AI inspection retry behavior', () => {
         inspection_id: 'inspection-1',
         inspection_status: 'PENDING_HUMAN_REVIEW',
         photo_count: 1,
-        model_used: 'gemini-3.8-flash',
+        model_used: 'gemini-3.6-flash',
       }, 201),
     ])
 
@@ -109,7 +109,7 @@ describe('AI inspection retry behavior', () => {
         inspection_id: 'inspection-2',
         inspection_status: 'PENDING_HUMAN_REVIEW',
         photo_count: 1,
-        model_used: 'gemini-3.8-flash',
+        model_used: 'gemini-3.6-flash',
       }, 201),
     ])
 
