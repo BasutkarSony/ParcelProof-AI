@@ -6,6 +6,7 @@ indexing, allowing PostgreSQL support without changing SQLite behaviour.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 
