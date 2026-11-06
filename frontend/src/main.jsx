@@ -240,7 +240,6 @@ export default function App() {
   const [remediationForm, setRemediationForm] = useState({
     tracking_number: '',
     carrier: '',
-    amount: '',
     evidence_text: ''
   })
   const [inspectLoading, setInspectLoading] = useState(false)
@@ -396,7 +395,6 @@ export default function App() {
       carrier: order.carrier || 'FEDEX',
       carrier_name_other: order.carrier_name_other || '',
       status: order.status || 'DELIVERED',
-      amount: order.amount !== undefined ? order.amount : '',
       evidence_text: order.evidence_text || ''
     })
     setCopiedPayload(false)
@@ -420,7 +418,6 @@ export default function App() {
       carrier: remediationForm.carrier,
       carrier_name_other: remediationForm.carrier === 'OTHER' ? remediationForm.carrier_name_other : '',
       status: remediationForm.status || selectedOrder.status || 'SHIPPED',
-      amount: remediationForm.amount !== '' ? parseFloat(remediationForm.amount) : 0,
       evidence_text: remediationForm.evidence_text
     }
 
@@ -935,18 +932,6 @@ export default function App() {
                           />
                         </div>
                       )}
-
-                      <div className="form-group">
-                        <label htmlFor="rem-amount">Order Amount ($ USD)</label>
-                        <input
-                          id="rem-amount"
-                          type="number"
-                          className="form-control"
-                          value={remediationForm.amount}
-                          onChange={e => setRemediationForm({ ...remediationForm, amount: e.target.value })}
-                          placeholder="e.g. 980.00"
-                        />
-                      </div>
 
                     </div>
 
