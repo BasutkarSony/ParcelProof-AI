@@ -1,5 +1,7 @@
 # ParcelProof AI
 
+> **Canonical PayPal AI Hackathon repository.** Use this repository and its hosted demo for the current submission. The older [ShipProof-AI repository](https://github.com/BasutkarSony/ShipProof-AI) is a historical snapshot and is not the current source or deployment.
+
 ### PayPal-connected order fulfilment and shipment evidence
 
 **From a verified Sandbox payment to a reviewed packing record.**
@@ -46,8 +48,9 @@ For small online merchants, payment details, product lists, packing checks and s
 
 ## AI and evidence safeguards
 
-- Gemini is the primary vision provider.
-- A single short retry is attempted for common temporary Gemini service errors.
+- Gemini `gemini-3.8-flash` is the primary vision provider; Google documents this stable model as accepting image inputs and structured outputs.
+- HTTP 503 temporary service failures receive one bounded retry.
+- HTTP 429 rate/quota errors are not automatically retried. The UI tells the operator to wait for the applicable rate window or quota reset before trying again.
 - If Gemini remains unavailable, the backend uses OpenAI Vision when `OPENAI_API_KEY` is configured.
 - Both providers use the same manifest prompt and server-side response validation.
 - The fallback receives every uploaded photo, up to the existing five-photo limit.
@@ -161,15 +164,15 @@ References: [Render Free instances](https://render.com/docs/free), [Render Bluep
 
 ### What has and has not been verified
 
-As of 6 November 2026, the existing Render Free service deploys `main` only after repository checks pass. See [docs/QA-STATUS.md](docs/QA-STATUS.md) for the latest verified commit, CI run and Render deployment. At the last verification, backend unit tests, PostgreSQL integration tests, frontend tests/lint/build and the Docker image build all passed; Render application logs showed repeated `/health` HTTP 200 responses.
+At the 6 November 2026 verification, the current application code commit `635282cde69cebcc929f72390ed970e005d80ea9` passed [GitHub Actions run 42241783179](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42241783179): 238 backend tests discovered (235 passed; 3 PostgreSQL-only tests run separately), all 3 PostgreSQL integration tests, frontend tests, Oxlint, Vite production build and Docker image build. The existing Render Free service deployed that application code and its logs showed `/health` HTTP 200. See [docs/QA-STATUS.md](docs/QA-STATUS.md) for the detailed verification snapshot.
 
-A real PayPal Sandbox checkout was completed through the hosted app. The backend verified/captured the payment and created one persisted order, one linked shipment and one finalized order-derived manifest in Supabase. The current Supabase snapshot contains 1 order, 1 shipment and 1 finalized manifest, but **0 packing inspections, 0 inspection photos and 0 human-review decisions**.
+A real PayPal Sandbox checkout was completed through the hosted app. The backend verified/captured payment and created one persisted order, one linked shipment and one finalized order-derived manifest in Supabase. The live database snapshot contains 1 order, 1 shipment and 1 manifest, but **0 packing inspections, 0 inspection photos and 0 human-review decisions**.
 
-The deployed app has not yet completed a successful live Gemini packing-photo inspection. A previous attempt returned temporary Gemini 503/429 errors. The code now preserves uploaded photo evidence and records a non-approvable `AI_FAILED` attempt on provider failure; this recovery behavior passes automated regression tests, but the same failure/retrieval path still needs a fresh hosted verification. The optional `OPENAI_API_KEY` fallback is not configured.
+A successful live Gemini packing-photo inspection has not yet been recorded. Previous hosted attempts returned 503/429 provider errors. The code now preserves uploaded evidence and records a non-approvable `AI_FAILED` attempt on provider failure; the recovery paths are covered by automated regression tests, but still need fresh hosted Storage verification. The optional `OPENAI_API_KEY` fallback is not configured.
 
-PayPal OAuth was verified in Sandbox and displayed the tracking write gate as locked. No PayPal tracking write has been performed; `PAYPAL_TRACKING_SUBMISSION_ENABLED=false` remains the intended setting. The prototype does not currently fetch carrier events, so merchant-entered tracking or delivery notes are not independently carrier-verified.
+PayPal OAuth was verified in Sandbox and the tracking write gate displayed as locked. No tracking write has been performed; `PAYPAL_TRACKING_SUBMISSION_ENABLED=false` remains the intended setting. The prototype does not fetch carrier events, so merchant-entered tracking or delivery notes are not independently carrier-verified.
 
-The deterministic shipment analyzer now reports operational record completeness only. It does not calculate Seller Protection eligibility. PayPal makes its own eligibility decision under the applicable country, account, transaction and claim rules.
+The deterministic shipment analyzer reports shipment-record completeness only. It does not calculate Seller Protection eligibility. PayPal makes its own decision under the requirements applicable to the seller, country, account, transaction and claim.
 
 ## Testing
 
