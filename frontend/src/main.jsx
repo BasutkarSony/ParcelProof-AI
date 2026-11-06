@@ -2010,7 +2010,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   const [uploading, setUploading] = useState(false)
   const [processingStatus, setProcessingStatus] = useState('') // 'uploading' | 'analyzing'
   const [inspectionResult, setInspectionResult] = useState(null)
-  const [lastInspectionStatus, setLastInspectionStatus] = useState(null) // HTTP status of last failed submission (retry-eligible if 503)
+  const [lastInspectionStatus, setLastInspectionStatus] = useState(null) // HTTP status of last provider failure (503 outage or 429 rate/quota limit)
   const validationRun = useState(false)
   const aiAnalysisRun = useState(false)
   const inspectionInFlight = useRef(false) // synchronous guard against concurrent duplicate submissions
@@ -2317,9 +2317,9 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
           detail || `Packing inspection request failed (HTTP ${res.status}). The server returned no readable error message. Your finalized manifest is unchanged; retry the inspection after the service recovers.`
         )
         err.status = res.status
-        // Only HTTP 503 (transient provider outage) is retry-eligible.
-        // Validation errors (422), conflicts (409), and other failures are not.
-        setLastInspectionStatus(res.status === 503 ? 503 : null)
+        // Provider outages and rate/quota limits can be retried after the indicated wait.
+        // Validation errors (422), conflicts (409), and other failures are not retryable.
+        setLastInspectionStatus([429, 503].includes(res.status) ? res.status : null)
         throw err
       }
 
@@ -2505,14 +2505,14 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                   {uploadError && (
                     <div className="findings-box issues" role="alert" style={{ marginBottom: '16px' }}>
                       {uploadError}
-                      {lastInspectionStatus === 503 && selectedPhotos.length > 0 && !uploading && (
+                      {[429, 503].includes(lastInspectionStatus) && selectedPhotos.length > 0 && !uploading && (
                         <button
                           type="button"
                           className="btn-secondary"
                           onClick={handleSubmitInspection}
                           style={{ marginTop: '10px', padding: '8px 14px', fontSize: '12px' }}
                         >
-                          Retry Inspection
+                          {lastInspectionStatus === 429 ? 'Retry after quota reset' : 'Retry Inspection'}
                         </button>
                       )}
                     </div>
