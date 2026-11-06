@@ -1,23 +1,28 @@
 # ParcelProof AI — 2:45 Demo Script
 
-Target runtime: 2 minutes 45 seconds. Use the deployed judge environment and PayPal Sandbox buyer credentials. Keep the browser zoom and sample data ready before recording. Do not show secrets or a live PayPal account.
+**Story:** A small PayPal merchant wants to avoid sending the wrong or incomplete order. ParcelProof links the verified payment to the exact purchased items, then checks visible packing evidence before the parcel is sealed.
+
+Target runtime: 2 minutes 45 seconds. Use the deployed judge environment, a PayPal Sandbox buyer and the physical item in the finalized manifest. Do not show secrets, live PayPal credentials or fabricated AI output.
 
 | Time | Show | Narration |
 |---|---|---|
-| 0:00–0:15 | Shipment Review landing screen | “ParcelProof AI is a PayPal-connected fulfilment workspace. It links a verified payment to the exact order, packing evidence and a separate human review. Its record checks are not a PayPal eligibility decision.” |
-| 0:15–0:45 | New Checkout; select products; PayPal Sandbox approval and return | “The workflow starts with a real PayPal Sandbox checkout. The backend verifies the capture and uses the purchased item lines to create the shipment record.” |
-| 0:45–1:10 | Shipment Review and Manifests; show order-derived items and finalized hash | “The manifest is derived from the paid order. The merchant checks the exact items and quantities, then finalizes it. The fingerprint records which manifest version the packing review refers to.” |
-| 1:10–1:45 | Packing Station; upload photos; run AI inspection; show result | “The operator uploads real packing photos. Vision AI reports visible item observations and uncertainty against the manifest. It does not approve the shipment, and a sealed-box photo cannot prove the contents inside.” |
-| 1:45–2:15 | AI Inspections; inspect photos and enter reviewer label/notes; approve or request correction | “A human reviews the original photos and AI observations and records a separate decision. The latest inspection and its review history remain retrievable.” |
-| 2:15–2:35 | Show Shipment Record Checks and tracking section with gate locked | “These checks flag missing or inconsistent merchant-entered data; they do not fetch carrier events. The PayPal tracking write gate stays locked in this demo.” |
-| 2:35–2:45 | Return to overview / product name | “ParcelProof AI keeps payment, order, packing and review records together. Carrier event integration is a remaining step, and PayPal makes its own Seller Protection decisions.” |
+| 0:00–0:15 | Shipment Review landing screen | “A small merchant can receive a PayPal payment, but still make a costly pick-and-pack mistake. ParcelProof AI focuses on catching visible wrong-item or missing-item discrepancies before dispatch.” |
+| 0:15–0:45 | New Checkout; select the actual product and quantity; PayPal Sandbox approval and return | “We start with a real PayPal Sandbox checkout. The backend verifies the capture, amount and currency. The shipment is linked to the exact items the buyer paid for.” |
+| 0:45–1:10 | Manifests; show order-derived line items, quantities and finalized fingerprint | “The packing manifest is generated from that paid order. The merchant checks the SKU and quantity, then finalizes it. That fingerprint records which declared contents the later packing review refers to.” |
+| 1:10–1:45 | Packing Station; show the actual unpacked items and pre-seal photographs; run Gemini inspection | “Before sealing the parcel, the operator photographs the items. Vision AI compares what is visible with the manifest and flags possible mismatches or uncertainty. It cannot prove what is inside a sealed parcel, and it never approves the shipment.” |
+| 1:45–2:15 | AI Inspections; inspect original photos and model observations; enter reviewer label/notes; record the real human decision | “A human reviews the original evidence and the AI observations, then records a separate decision: approve the packing review, request correction or reject the evidence. The AI does not make that decision.” |
+| 2:15–2:35 | Show Shipment Record Checks and PayPal tracking section with gate locked | “The record checks help find missing or inconsistent information. Carrier events are not integrated yet, so merchant-entered tracking notes are not presented as carrier proof. PayPal tracking writes stay locked in this demo.” |
+| 2:35–2:45 | Return to overview / product name | “ParcelProof connects payment, declared items, packing evidence and human review to help prevent avoidable fulfilment mistakes before dispatch.” |
 
 ## Recording notes
 
-- If the live PayPal Sandbox flow is slow, record a separate successful run and edit only to remove idle waiting; do not fake or stage a payment result.
-- Use an inspection result that actually completed in the hosted deployment. Do not present mock AI output, a local-only run or an AI_FAILED attempt as a successful live inspection.
-- Do not record the video as a complete end-to-end workflow until the hosted AI inspection, durable photo retrieval and human-review decision have actually passed.
-- Show the human decision as a separate action from AI analysis.
-- Explain that Shipment Record Checks use entered data and text heuristics; no carrier event feed is connected yet.
+- Use a real Sandbox checkout and the exact item shown in the finalized manifest.
+- Photograph the actual item(s) before sealing the parcel. Do not substitute stock photos, generic product images or an image of a sealed box.
+- Use an inspection result that actually completed in the hosted deployment. Do not present mock AI output, a local-only run or an `AI_FAILED` attempt as a successful inspection.
+- Do not record the video as a complete E2E workflow until hosted AI inspection, durable photo retrieval and the separate human-review decision have all passed.
+- Show the reviewer decision as a distinct action after AI analysis.
+- Describe AI findings as possible visible discrepancies, not proof of parcel contents or a delivery guarantee.
+- Explain that no carrier event feed is connected yet.
 - Do not enable PayPal tracking submission just to make the screen look complete.
-- If a step fails during recording, fix the environment and record again instead of narrating a success that did not happen.
+- If a live step fails, fix it and re-record. Do not narrate a success that did not happen.
+- Keep the video under three minutes and upload it to YouTube with visibility allowed by the event rules.
