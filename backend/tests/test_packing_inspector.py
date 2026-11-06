@@ -735,37 +735,36 @@ class InspectionAPITests(unittest.TestCase):
             if os.path.exists(tf_path):
                 os.unlink(tf_path)
 
-    def test_inspection_api_503_server_error_cleans_up_photos(self):
-        """Test end-to-end 503 ServerError during inspection API call: returns 503 and deletes uploaded files."""
+    def test_inspection_api_503_server_error_preserves_uploaded_photos(self):
+        """A Gemini 503 returns a recovery error but persists the uploaded evidence."""
         from fastapi import HTTPException
-        from app.packing_inspector import run_inspection, GeminiUnavailableError, PHOTO_DIR
+        from app.packing_inspector import PHOTO_DIR
         from google.genai import errors as genai_errors
 
         manifest = self._finalized_manifest_via_api()
         photos = [self._make_upload(_make_jpeg())]
+        before_files = set(PHOTO_DIR.iterdir()) if PHOTO_DIR.exists() else set()
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-api-key"}):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-api-key", "OPENAI_API_KEY": ""}):
             with patch("google.genai.Client") as mock_client_cls:
                 mock_client = MagicMock()
                 mock_client_cls.return_value = mock_client
                 mock_client.models.generate_content.side_effect = genai_errors.ServerError(503, "503 UNAVAILABLE")
 
-                # Before request, count existing files in storage
-                before_files = set(PHOTO_DIR.iterdir()) if PHOTO_DIR.exists() else set()
-
                 with self.assertRaises(HTTPException) as ctx:
-                    self._run_async(
-                        self.create_packing_inspection(manifest["id"], photos)
-                    )
+                    self._run_async(self.create_packing_inspection(manifest["id"], photos))
 
-                self.assertEqual(ctx.exception.status_code, 503)
-                self.assertIn("temporarily unavailable", str(ctx.exception.detail))
-                self.assertNotIn("fake-api-key", str(ctx.exception.detail))
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertIn("temporarily unavailable", str(ctx.exception.detail))
+        self.assertIn("preserved as failed inspection", str(ctx.exception.detail))
+        self.assertNotIn("fake-api-key", str(ctx.exception.detail))
 
-                # After request, verify no leaked photo files remain
-                after_files = set(PHOTO_DIR.iterdir()) if PHOTO_DIR.exists() else set()
-                new_files = after_files - before_files
-                self.assertEqual(len(new_files), 0, "Uploaded photos were not cleaned up on 503")
+        after_files = set(PHOTO_DIR.iterdir()) if PHOTO_DIR.exists() else set()
+        new_files = after_files - before_files
+        self.assertEqual(len(new_files), 1, "Uploaded photo evidence was not retained after 503")
+        inspections = list_inspections_for_manifest(manifest["id"])
+        self.assertEqual(inspections[0]["inspection_status"], "AI_FAILED")
+        self.assertEqual(inspections[0]["photo_count"], 1)
 
     def test_create_inspection_gemini_runtime_error_raises_502(self):
         from fastapi import HTTPException
@@ -1125,46 +1124,31 @@ class CleanupOnFailureTests(unittest.TestCase):
         upload.close = _close
         return upload
 
-    def test_cleanup_after_gemini_failure(self):
-        """Photos stored before Gemini fails must be deleted."""
-        from fastapi import HTTPException
-        manifest = self._finalized_manifest()
-        photos = [self._make_upload(_make_jpeg())]
-
-        with patch(
-            "app.main.run_inspection",
-            side_effect=RuntimeError("Gemini timeout"),
-        ):
-            try:
-                self._run_async(
-                    self.create_packing_inspection(manifest["id"], photos)
-                )
-            except HTTPException:
-                pass
-
-        remaining = list(self._pi.PHOTO_DIR.iterdir())
-        self.assertEqual(remaining, [], f"Orphaned files after Gemini failure: {remaining}")
-
-    def test_cleanup_after_gemini_unavailable(self):
-        """Photos stored before GeminiUnavailableError must be deleted."""
+    def test_ai_failure_preserves_photos_and_records_non_approvable_attempt(self):
+        """Provider failures keep evidence and create an AI_FAILED record."""
         from fastapi import HTTPException
         from app.packing_inspector import GeminiUnavailableError
-        manifest = self._finalized_manifest()
-        photos = [self._make_upload(_make_jpeg())]
 
-        with patch(
-            "app.main.run_inspection",
-            side_effect=GeminiUnavailableError("no key"),
+        for error, expected_status in (
+            (RuntimeError("Gemini timeout"), 502),
+            (GeminiUnavailableError("no key"), 503),
         ):
-            try:
-                self._run_async(
-                    self.create_packing_inspection(manifest["id"], photos)
-                )
-            except HTTPException:
-                pass
+            manifest = self._finalized_manifest()
+            photos = [self._make_upload(_make_jpeg())]
+            before_files = set(self._pi.PHOTO_DIR.iterdir())
 
-        remaining = list(self._pi.PHOTO_DIR.iterdir())
-        self.assertEqual(remaining, [], f"Orphaned files after unavailable error: {remaining}")
+            with patch("app.main.run_inspection", side_effect=error):
+                with self.assertRaises(HTTPException) as ctx:
+                    self._run_async(self.create_packing_inspection(manifest["id"], photos))
+
+            self.assertEqual(ctx.exception.status_code, expected_status)
+            self.assertIn("preserved as failed inspection", ctx.exception.detail)
+            new_files = set(self._pi.PHOTO_DIR.iterdir()) - before_files
+            self.assertEqual(len(new_files), 1, "Uploaded evidence must remain available")
+            saved = store.list_inspections_for_manifest(manifest["id"])
+            self.assertEqual(saved[0]["inspection_status"], "AI_FAILED")
+            self.assertEqual(saved[0]["photo_count"], 1)
+            self.assertEqual(saved[0]["ai_result"]["inspection_state"], "AI_FAILED")
 
     def test_cleanup_after_db_failure(self):
         """Photos stored before a DB write failure must be deleted."""
