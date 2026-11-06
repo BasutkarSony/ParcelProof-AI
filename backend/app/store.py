@@ -980,15 +980,20 @@ def finalize_manifest(manifest_id: str) -> dict:
 def create_inspection(
     manifest_id: str,
     manifest_hash: str,
-    model_used: str,
+    model_used: str | None,
     ai_result: dict,
     photo_records: list[dict],
+    inspection_status: str = "PENDING_HUMAN_REVIEW",
 ) -> dict:
-    """Persist a completed packing inspection and its photo records.
+    """Persist an inspection attempt and its photo evidence.
 
-    photo_records: list of {id, sha256, mime_type, size_bytes}
-    Always stores inspection_status = 'PENDING_HUMAN_REVIEW'.
+    Successful AI inspections remain PENDING_HUMAN_REVIEW. AI_FAILED records
+    preserve uploaded evidence after a provider failure but cannot be reviewed
+    or used to authorize tracking.
     """
+    if inspection_status not in {"PENDING_HUMAN_REVIEW", "AI_FAILED"}:
+        raise ValueError("Unsupported inspection status.")
+
     inspection_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
@@ -1001,11 +1006,12 @@ def create_inspection(
                     (id, manifest_id, inspection_status, photo_count,
                      model_used, ai_result, manifest_hash_at_inspection,
                      created_at, updated_at)
-                VALUES (?, ?, 'PENDING_HUMAN_REVIEW', ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     inspection_id,
                     manifest_id,
+                    inspection_status,
                     len(photo_records),
                     model_used,
                     json.dumps(ai_result),
