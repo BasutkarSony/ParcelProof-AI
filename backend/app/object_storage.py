@@ -87,7 +87,7 @@ def upload_private_object(object_path: str, data: bytes, content_type: str) -> s
 
 def download_private_object(object_path: str) -> bytes:
     """Download an object from the private bucket."""
-    base_url, secret, bucket = _configuration()
+    base_url, api_key, service_jwt, bucket = _configuration()
     try:
         response = requests.get(
             _object_url(base_url, bucket, object_path),
@@ -105,11 +105,11 @@ def download_private_object(object_path: str) -> bytes:
 
 def delete_private_object(object_path: str) -> None:
     """Delete an object during rollback after a failed inspection."""
-    base_url, secret, bucket = _configuration()
+    base_url, api_key, service_jwt, bucket = _configuration()
     try:
         response = requests.delete(
             _object_url(base_url, bucket, object_path),
-            headers=_headers(secret),
+            headers=_headers(api_key, service_jwt),
             timeout=30,
         )
         if response.status_code not in (200, 204):
