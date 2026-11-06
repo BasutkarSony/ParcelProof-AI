@@ -44,7 +44,8 @@ describe('Dashboard', () => {
     render(<App />)
 
     expect((await screen.findAllByText('ORD-1001')).length).toBeGreaterThan(0)
-    expect(screen.getByText('SHIPMENTS IN QUEUE')).toBeInTheDocument()
-    expect(screen.getByText('DATA-QUALITY VALIDATED')).toBeInTheDocument()
+    expect(screen.getByText('LINKED PAYPAL CHECKOUTS')).toBeInTheDocument()
+    expect(screen.getByText('Export reconciliation queue')).toBeInTheDocument()
+    expect(screen.getByText('Sample record · Not a PayPal checkout')).toBeInTheDocument()
   })
 })

@@ -3360,3 +3360,95 @@ footer p {
   .export-review-actions button { flex: 1; }
   .export-history button { grid-template-columns: 1fr; gap: 3px; }
 }
+
+/* ─── Payment-to-export dashboard entry point ───────────────────────────────── */
+.export-hero {
+  gap: 28px;
+  align-items: stretch;
+}
+.export-hero .hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.export-hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+.export-hero-actions > span {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.export-flow-card {
+  width: min(360px, 38%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+}
+.export-flow-step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+.export-flow-step > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  background: var(--info-bg);
+  color: var(--cobalt);
+  border-radius: 8px;
+  font: 700 10px var(--font-mono);
+}
+.export-flow-step > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.export-flow-step strong {
+  color: var(--navy);
+  font-size: 12px;
+}
+.export-flow-step small {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.export-flow-step > b {
+  color: var(--success);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.export-flow-connector {
+  height: 18px;
+  width: 1px;
+  margin: 3px 0 3px 13px;
+  background: var(--border-strong);
+}
+.export-flow-card .art-tag {
+  margin-top: 18px;
+}
+.export-explainer .arch-badge {
+  white-space: nowrap;
+}
+.export-limits .arch-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.export-stats-grid .export-stat-word {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+@media (max-width: 900px) {
+  .export-flow-card { width: 320px; }
+}
+@media (max-width: 760px) {
+  .export-hero { flex-direction: column; }
+  .export-flow-card { width: 100%; }
+  .export-limits .arch-grid { grid-template-columns: 1fr; }
+}
