@@ -114,4 +114,19 @@ describe('AI inspection retry behavior', () => {
     expect(await screen.findByText(detail)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Retry Inspection' })).not.toBeInTheDocument()
   })
+
+  it('shows an HTTP recovery message when the 503 response body is empty', async () => {
+    setupPackingStation([{
+      ok: false,
+      status: 503,
+      text: async () => '',
+    }])
+
+    expect(await screen.findByText('Packing Station & AI Vision Inspection')).toBeInTheDocument()
+    await selectPhoto()
+    fireEvent.click(screen.getByRole('button', { name: /Run AI Vision Inspection/ }))
+
+    expect(await screen.findByText(/HTTP 503/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry Inspection' })).toBeInTheDocument()
+  })
 })
