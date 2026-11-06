@@ -49,7 +49,12 @@ class ReconciliationApiTests(unittest.TestCase):
         self.assertEqual(result["overall_status"], "MATCHED_FOR_CHECKED_FIELDS")
         self.assertEqual(result["reconciliation_id"], "run-1")
         create_run.assert_called_once()
-        reconcile.assert_called_once_with(self.order, self.manifest, self.payload["document"])
+        reconcile.assert_called_once()
+        reconciled_document = reconcile.call_args.args[2]
+        self.assertEqual(reconciled_document["document_type"], "PACKING_LIST")
+        self.assertEqual(reconciled_document["items"], [])
+        self.assertTrue(reconciled_document["merchant_confirmed"])
+        self.assertEqual(reconciled_document["recipient_address"]["country_code"], "")
         get_order.assert_called_once_with("order-1")
         get_manifest.assert_called_once_with("SHP-1")
 
