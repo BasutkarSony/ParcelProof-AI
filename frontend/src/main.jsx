@@ -1970,6 +1970,9 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
                   </>
                 )}
               </div>
+              {isFinalized && selectedShipment.checkout_order_id && (
+                <ExportDocumentWorkflow shipment={selectedShipment} />
+              )}
             </>
           ) : (
             <div className="checkout-state-box" style={{ padding: '60px' }}>
@@ -1981,6 +1984,456 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
     </main>
   )
 }
+
+
+// ─── Payment-to-export document reconciliation ───────────────────────────────
+function emptyExportDocument(documentType) {
+  return {
+    document_type: documentType,
+    document_number: '',
+    currency: '',
+    total_amount: '',
+    recipient_name: '',
+    recipient_address: {
+      address_line_1: '', address_line_2: '', city: '', state: '',
+      postal_code: '', country_code: ''
+    },
+    items: [],
+    extraction_notes: [],
+    merchant_confirmed: false
+  }
+}
+
+export function ExportDocumentWorkflow({ shipment }) {
+  const [documents, setDocuments] = useState([])
+  const [history, setHistory] = useState([])
+  const [selectedDocumentId, setSelectedDocumentId] = useState('')
+  const [documentType, setDocumentType] = useState('COMMERCIAL_INVOICE')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [draft, setDraft] = useState(() => emptyExportDocument('COMMERCIAL_INVOICE'))
+  const [isDirty, setIsDirty] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [reconciling, setReconciling] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [result, setResult] = useState(null)
+
+  const selectedDocument = documents.find(item => item.document_id === selectedDocumentId) || null
+
+  async function loadRecords() {
+    const [documentResponse, historyResponse] = await Promise.all([
+      fetch(`${API_BASE}/api/shipments/${encodeURIComponent(shipment.order_id)}/documents`),
+      fetch(`${API_BASE}/api/shipments/${encodeURIComponent(shipment.order_id)}/reconciliations`)
+    ])
+    const [documentData, historyData] = await Promise.all([
+      readApiJson(documentResponse), readApiJson(historyResponse)
+    ])
+    if (!documentResponse.ok) throw new Error(documentData.detail || 'Could not load export documents.')
+    if (!historyResponse.ok) throw new Error(historyData.detail || 'Could not load reconciliation history.')
+    setDocuments(Array.isArray(documentData.documents) ? documentData.documents : [])
+    setHistory(Array.isArray(historyData.reconciliations) ? historyData.reconciliations : [])
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    async function refresh() {
+      setLoading(true)
+      setError('')
+      try {
+        const [documentResponse, historyResponse] = await Promise.all([
+          fetch(`${API_BASE}/api/shipments/${encodeURIComponent(shipment.order_id)}/documents`),
+          fetch(`${API_BASE}/api/shipments/${encodeURIComponent(shipment.order_id)}/reconciliations`)
+        ])
+        const [documentData, historyData] = await Promise.all([
+          readApiJson(documentResponse), readApiJson(historyResponse)
+        ])
+        if (cancelled) return
+        if (!documentResponse.ok) throw new Error(documentData.detail || 'Could not load export documents.')
+        if (!historyResponse.ok) throw new Error(historyData.detail || 'Could not load reconciliation history.')
+        const nextDocuments = Array.isArray(documentData.documents) ? documentData.documents : []
+        setDocuments(nextDocuments)
+        setHistory(Array.isArray(historyData.reconciliations) ? historyData.reconciliations : [])
+        setSelectedDocumentId(current => (
+          current && nextDocuments.some(item => item.document_id === current)
+            ? current
+            : nextDocuments[0]?.document_id || ''
+        ))
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Could not load export records.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    refresh()
+    setResult(null)
+    setNotice('')
+    setSelectedFile(null)
+    return () => { cancelled = true }
+  }, [shipment.order_id])
+
+  useEffect(() => {
+    if (!selectedDocument) {
+      setDraft(emptyExportDocument(documentType))
+      setIsDirty(true)
+      setResult(null)
+      return
+    }
+    const confirmed = selectedDocument.confirmed_data
+    const extracted = selectedDocument.extracted_data
+    setDraft(confirmed || extracted || emptyExportDocument(selectedDocument.document_type))
+    setIsDirty(selectedDocument.document_status !== 'CONFIRMED')
+    setDocumentType(selectedDocument.document_type)
+    setResult(null)
+  }, [selectedDocumentId, documents])
+
+  function updateField(field, value) {
+    setDraft(current => ({ ...current, [field]: value, merchant_confirmed: false }))
+    setIsDirty(true)
+    setResult(null)
+  }
+
+  function updateAddress(field, value) {
+    setDraft(current => ({
+      ...current,
+      recipient_address: { ...(current.recipient_address || {}), [field]: value },
+      merchant_confirmed: false
+    }))
+    setIsDirty(true)
+    setResult(null)
+  }
+
+  function updateItem(index, field, value) {
+    setDraft(current => ({
+      ...current,
+      items: (current.items || []).map((item, i) => i === index ? { ...item, [field]: value } : item),
+      merchant_confirmed: false
+    }))
+    setIsDirty(true)
+    setResult(null)
+  }
+
+  function addItem() {
+    setDraft(current => ({
+      ...current,
+      items: [...(current.items || []), {
+        sku: '', description: '', quantity: null, unit_amount: '', line_total: ''
+      }],
+      merchant_confirmed: false
+    }))
+    setIsDirty(true)
+    setResult(null)
+  }
+
+  function removeItem(index) {
+    setDraft(current => ({
+      ...current,
+      items: (current.items || []).filter((_, i) => i !== index),
+      merchant_confirmed: false
+    }))
+    setIsDirty(true)
+    setResult(null)
+  }
+
+  async function uploadDocument() {
+    if (!selectedFile) {
+      setError('Choose an invoice or packing list first.')
+      return
+    }
+    setUploading(true)
+    setError('')
+    setNotice('')
+    setResult(null)
+    try {
+      const body = new FormData()
+      body.append('file', selectedFile)
+      body.append('document_type', documentType)
+      const response = await fetch(
+        `${API_BASE}/api/shipments/${encodeURIComponent(shipment.order_id)}/documents`,
+        { method: 'POST', body }
+      )
+      const data = await readApiJson(response)
+      if (!response.ok) throw new Error(data.detail || 'Document upload failed.')
+      const item = data.document
+      setDocuments(current => [item, ...current.filter(existing => existing.document_id !== item.document_id)])
+      setSelectedDocumentId(item.document_id)
+      setDraft(item.extracted_data || emptyExportDocument(item.document_type))
+      setIsDirty(true)
+      setSelectedFile(null)
+      setNotice(data.message || 'Document saved. Review its fields before continuing.')
+    } catch (err) {
+      setError(err.message || 'Document upload failed.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function confirmFields() {
+    if (!selectedDocument) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const response = await fetch(`${API_BASE}/api/documents/${encodeURIComponent(selectedDocument.document_id)}/confirm`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document: { ...draft, document_type: selectedDocument.document_type }, reviewer_label: 'Merchant' })
+      })
+      const data = await readApiJson(response)
+      if (!response.ok) throw new Error(data.detail || 'Could not confirm document fields.')
+      setDocuments(current => current.map(item => item.document_id === data.document_id ? data : item))
+      setIsDirty(false)
+      setNotice('Document fields confirmed by the merchant. You can now run reconciliation.')
+      setResult(null)
+    } catch (err) {
+      setError(err.message || 'Could not confirm document fields.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function runReconciliation() {
+    if (!selectedDocument || selectedDocument.document_status !== 'CONFIRMED' || isDirty) return
+    setReconciling(true)
+    setError('')
+    setNotice('')
+    try {
+      const response = await fetch(`${API_BASE}/api/shipments/${encodeURIComponent(shipment.order_id)}/reconcile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_id: selectedDocument.document_id })
+      })
+      const data = await readApiJson(response)
+      if (!response.ok) throw new Error(data.detail || 'Reconciliation could not be completed.')
+      setResult(data)
+      setNotice('Reconciliation saved to this shipment record.')
+      await loadRecords()
+    } catch (err) {
+      setError(err.message || 'Reconciliation could not be completed.')
+    } finally {
+      setReconciling(false)
+    }
+  }
+
+  function showPastResult(run) {
+    setSelectedDocumentId(run.document_id || '')
+    setResult(run.result || null)
+  }
+
+  const isConfirmed = selectedDocument?.document_status === 'CONFIRMED' && !isDirty
+  const statusLabel = selectedDocument
+    ? selectedDocument.document_status.replaceAll('_', ' ')
+    : 'NO DOCUMENTS'
+  const checks = result?.checks || []
+  const latestHistory = history.slice(0, 5)
+
+  return (
+    <section className="export-workflow-card" aria-label="Export document reconciliation">
+      <div className="export-workflow-heading">
+        <div>
+          <div className="eyebrow">PAYMENT-TO-EXPORT RECONCILIATION</div>
+          <h3>Export documents</h3>
+          <p>Compare the paid PayPal order and finalized packing manifest with the commercial invoice or packing list.</p>
+        </div>
+        <span className={`pill ${isConfirmed ? 'pill-pass' : 'pill-warn'}`}>{statusLabel}</span>
+      </div>
+
+      <div className="export-sources-row">
+        <div><small>PAYPAL CHECKOUT</small><strong>{shipment.checkout_order_id?.slice(0, 12)}…</strong></div>
+        <div><small>PAYMENT CAPTURE</small><strong>{shipment.paypal_capture_id || shipment.transaction_id || '—'}</strong></div>
+        <div><small>MANIFEST</small><strong>{'FINALIZED · HASHED'}</strong></div>
+      </div>
+
+      {error && <div className="findings-box issues" role="alert">{error}</div>}
+      {notice && <div className="export-notice" role="status">{notice}</div>}
+
+      <div className="export-upload-row">
+        <div className="export-upload-controls">
+          <label className="export-field">
+            <span>Document type</span>
+            <select className="form-control" value={documentType} onChange={event => setDocumentType(event.target.value)}>
+              <option value="COMMERCIAL_INVOICE">Commercial invoice</option>
+              <option value="PACKING_LIST">Packing list</option>
+            </select>
+          </label>
+          <label className="export-field export-file-field">
+            <span>Choose document (PDF, JPEG, PNG or WebP · max 10 MB)</span>
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+              onChange={event => setSelectedFile(event.target.files?.[0] || null)}
+            />
+          </label>
+        </div>
+        <button className="btn-primary" type="button" onClick={uploadDocument} disabled={uploading || !selectedFile}>
+          {uploading ? 'Uploading & extracting…' : 'Upload document'}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="export-empty-state" role="status">Loading shipment export records…</div>
+      ) : documents.length > 0 ? (
+        <div className="export-document-list" aria-label="Uploaded documents">
+          {documents.map(item => (
+            <button
+              type="button"
+              key={item.document_id}
+              className={`export-document-chip ${item.document_id === selectedDocumentId ? 'active' : ''}`}
+              onClick={() => { setSelectedDocumentId(item.document_id); setNotice(''); setError('') }}
+            >
+              <span>{item.document_type === 'COMMERCIAL_INVOICE' ? 'Invoice' : 'Packing list'}</span>
+              <strong>{item.original_filename}</strong>
+              <small>{item.document_status.replaceAll('_', ' ')} · {item.extraction_status.replaceAll('_', ' ')}</small>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="export-empty-state">
+          No export document has been added to this shipment yet. Upload a PDF or image, or enter the fields manually below.
+        </div>
+      )}
+
+      {selectedDocument && (
+        <div className="export-review-panel">
+          <div className="export-review-heading">
+            <div>
+              <h4>Review extracted fields</h4>
+              <p>Original: {selectedDocument.original_filename} · SHA-256: <code>{selectedDocument.sha256?.slice(0, 16)}…</code></p>
+            </div>
+            <a href={`${API_BASE}/api/documents/${encodeURIComponent(selectedDocument.document_id)}/file`} target="_blank" rel="noreferrer">
+              Open original
+            </a>
+          </div>
+
+          {!selectedDocument.extracted_data && selectedDocument.extraction_status !== 'EXTRACTED' && (
+            <div className="findings-box warnings">
+              <strong>Manual field entry</strong>
+              <p>{selectedDocument.extraction_error || 'AI extraction is not configured or did not complete. The original file is saved; fill in the document fields below.'}</p>
+            </div>
+          )}
+          {selectedDocument.extracted_data?.extraction_notes?.length > 0 && (
+            <div className="findings-box warnings">
+              <strong>Extraction notes — verify these carefully</strong>
+              {selectedDocument.extracted_data.extraction_notes.map((note, index) => <p key={index}>• {note}</p>)}
+            </div>
+          )}
+
+          <div className="export-form-grid">
+            <label className="export-field">
+              <span>Document number</span>
+              <input className="form-control" value={draft.document_number || ''} onChange={event => updateField('document_number', event.target.value)} />
+            </label>
+            <label className="export-field">
+              <span>Currency</span>
+              <input className="form-control" maxLength="3" placeholder="USD" value={draft.currency || ''} onChange={event => updateField('currency', event.target.value.toUpperCase())} />
+            </label>
+            <label className="export-field">
+              <span>{draft.document_type === 'PACKING_LIST' ? 'Document total (optional)' : 'Invoice total'}</span>
+              <input className="form-control" type="number" min="0" step="0.01" value={draft.total_amount ?? ''} onChange={event => updateField('total_amount', event.target.value)} />
+            </label>
+            <label className="export-field">
+              <span>Recipient name</span>
+              <input className="form-control" value={draft.recipient_name || ''} onChange={event => updateField('recipient_name', event.target.value)} />
+            </label>
+          </div>
+
+          <div className="export-address-section">
+            <strong>Recipient address</strong>
+            <div className="export-form-grid">
+              {[
+                ['address_line_1', 'Address line 1'],
+                ['address_line_2', 'Address line 2'],
+                ['city', 'City'],
+                ['state', 'State / region'],
+                ['postal_code', 'Postal code'],
+                ['country_code', 'Country code']
+              ].map(([field, label]) => (
+                <label className="export-field" key={field}>
+                  <span>{label}</span>
+                  <input className="form-control" value={draft.recipient_address?.[field] || ''} onChange={event => updateAddress(field, event.target.value)} />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="export-items-section">
+            <div className="export-items-heading">
+              <div><strong>Document line items</strong><small>Match by SKU where available, otherwise by description.</small></div>
+              <button type="button" className="btn-secondary" onClick={addItem}>+ Add line</button>
+            </div>
+            {(draft.items || []).length === 0 ? (
+              <div className="export-empty-state">No lines extracted. Add the items printed on the document.</div>
+            ) : (
+              <div className="export-lines-table-wrap">
+                <table className="export-lines-table">
+                  <thead><tr><th>SKU</th><th>Description</th><th>Qty</th><th>Unit value</th><th>Line total</th><th></th></tr></thead>
+                  <tbody>
+                    {(draft.items || []).map((item, index) => (
+                      <tr key={index}>
+                        <td><input aria-label={`Line ${index + 1} SKU`} className="form-control" value={item.sku || ''} onChange={event => updateItem(index, 'sku', event.target.value)} /></td>
+                        <td><input aria-label={`Line ${index + 1} description`} className="form-control" value={item.description || ''} onChange={event => updateItem(index, 'description', event.target.value)} /></td>
+                        <td><input aria-label={`Line ${index + 1} quantity`} className="form-control" type="number" min="1" step="1" value={item.quantity ?? ''} onChange={event => updateItem(index, 'quantity', event.target.value === '' ? null : Number(event.target.value))} /></td>
+                        <td><input aria-label={`Line ${index + 1} unit value`} className="form-control" type="number" min="0" step="0.01" value={item.unit_amount ?? ''} onChange={event => updateItem(index, 'unit_amount', event.target.value)} /></td>
+                        <td><input aria-label={`Line ${index + 1} line total`} className="form-control" type="number" min="0" step="0.01" value={item.line_total ?? ''} onChange={event => updateItem(index, 'line_total', event.target.value)} /></td>
+                        <td><button type="button" className="export-remove-line" aria-label={`Remove line ${index + 1}`} onClick={() => removeItem(index)}>×</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="export-review-actions">
+            <span>{isConfirmed ? 'Merchant-confirmed fields saved.' : 'These fields are a draft until you confirm them.'}</span>
+            <div>
+              <button className="btn-secondary" type="button" onClick={confirmFields} disabled={saving || !isDirty}>
+                {saving ? 'Saving…' : 'Confirm document fields'}
+              </button>
+              <button className="btn-primary" type="button" onClick={runReconciliation} disabled={reconciling || !isConfirmed}>
+                {reconciling ? 'Reconciling…' : 'Run reconciliation'}
+              </button>
+            </div>
+          </div>
+          <p className="export-review-disclaimer">
+            AI extraction is not verification. Review the original document before confirming. A reconciliation match is an operational consistency check, not customs clearance, carrier proof, PayPal Seller Protection eligibility or legal/export compliance advice.
+          </p>
+        </div>
+      )}
+
+      {result && (
+        <div className="export-result-panel" aria-live="polite">
+          <div className="export-result-header">
+            <div><small>RECONCILIATION RESULT</small><strong>{result.overall_status?.replaceAll('_', ' ') || 'REVIEW REQUIRED'}</strong></div>
+            <span>{result.summary?.matched || 0} matched · {result.summary?.mismatches || 0} mismatches · {result.summary?.not_checked || 0} not checked</span>
+          </div>
+          {(result.findings || []).map((check, index) => (
+            <div className={`export-check-row ${check.status === 'MISMATCH' ? 'mismatch' : 'review'}`} key={`${check.code || 'check'}-${index}`}>
+              <div><strong>{check.field || check.code}</strong><small>{check.message}</small></div>
+              <span>{check.status?.replaceAll('_', ' ')}</span>
+              {check.recommended_action && <p>{check.recommended_action}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {latestHistory.length > 0 && (
+        <div className="export-history">
+          <strong>Saved reconciliation history</strong>
+          {latestHistory.map(run => (
+            <button type="button" key={run.id} onClick={() => showPastResult(run)}>
+              <span>{new Date(run.created_at).toLocaleString()}</span>
+              <b>{run.overall_status?.replaceAll('_', ' ')}</b>
+              <small>{run.document_id ? 'View saved result' : 'Historical run'}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 
 // ─── Packing Station Workflow View ────────────────────────────────────────────
 export function PackingStationView({ orders, activeShipmentId, setActiveShipmentId, navigateTo }) {

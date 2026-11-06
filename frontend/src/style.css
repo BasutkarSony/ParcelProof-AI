@@ -3019,3 +3019,344 @@ footer p {
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+/* ─── Payment-to-export reconciliation workflow ─────────────────────────────── */
+.export-workflow-card {
+  margin-top: 22px;
+  padding: 22px 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.export-workflow-heading,
+.export-review-heading,
+.export-items-heading,
+.export-result-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.export-workflow-heading h3 {
+  font: 700 17px var(--font-mono);
+  color: var(--navy);
+  margin: 4px 0;
+}
+.export-workflow-heading p,
+.export-review-heading p {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 680px;
+}
+.export-sources-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+.export-sources-row > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+.export-sources-row small,
+.export-result-header small {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .07em;
+}
+.export-sources-row strong {
+  color: var(--navy);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.export-notice {
+  color: var(--success);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+.export-upload-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  background: var(--canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.export-upload-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, .7fr) minmax(250px, 1.3fr);
+  gap: 12px;
+  width: 100%;
+}
+.export-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.export-file-field input {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 8px;
+  background: var(--white);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+}
+.export-document-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.export-document-chip {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 9px 12px;
+  min-width: 170px;
+  max-width: 260px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  cursor: pointer;
+}
+.export-document-chip.active {
+  border-color: var(--cobalt);
+  box-shadow: 0 0 0 2px rgba(23, 105, 224, .1);
+}
+.export-document-chip span,
+.export-document-chip small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.export-document-chip strong {
+  color: var(--navy);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.export-empty-state {
+  margin: 12px 0;
+  padding: 16px;
+  color: var(--text-muted);
+  background: var(--canvas);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.export-review-panel {
+  margin-top: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-subtle);
+}
+.export-review-heading {
+  margin-bottom: 14px;
+}
+.export-review-heading h4 {
+  color: var(--navy);
+  font: 700 14px var(--font-mono);
+  margin-bottom: 4px;
+}
+.export-review-heading a {
+  color: var(--cobalt);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.export-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.export-address-section,
+.export-items-section {
+  margin-top: 18px;
+}
+.export-address-section > strong,
+.export-items-heading strong {
+  display: block;
+  color: var(--navy);
+  font-size: 12px;
+}
+.export-items-heading {
+  align-items: center;
+  margin-bottom: 10px;
+}
+.export-items-heading small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.export-lines-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.export-lines-table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+}
+.export-lines-table th {
+  padding: 8px;
+  color: var(--text-muted);
+  text-align: left;
+  font-size: 9px;
+  letter-spacing: .04em;
+  background: var(--canvas);
+}
+.export-lines-table td {
+  padding: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.export-lines-table .form-control {
+  min-width: 78px;
+}
+.export-remove-line {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-subtle);
+  background: var(--white);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--status-block-text);
+}
+.export-review-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.export-review-actions > span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.export-review-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.export-review-disclaimer {
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.export-result-panel {
+  margin-top: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.export-result-header {
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--canvas);
+}
+.export-result-header > div {
+  display: grid;
+  gap: 3px;
+}
+.export-result-header strong {
+  color: var(--navy);
+  font: 700 13px var(--font-mono);
+}
+.export-result-header > span {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.export-check-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 14px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.export-check-row > div {
+  display: grid;
+  gap: 3px;
+}
+.export-check-row strong {
+  color: var(--navy);
+  font-size: 11px;
+}
+.export-check-row small,
+.export-check-row p {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.export-check-row > span {
+  color: var(--status-warn-text);
+  font-size: 9px;
+  font-weight: 700;
+}
+.export-check-row.mismatch > span {
+  color: var(--status-block-text);
+}
+.export-check-row p {
+  grid-column: 1 / -1;
+}
+.export-history {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+.export-history > strong {
+  color: var(--navy);
+  font-size: 12px;
+}
+.export-history button {
+  display: grid;
+  grid-template-columns: minmax(140px, .8fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle);
+  background: var(--white);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.export-history button span,
+.export-history button small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.export-history button b {
+  color: var(--navy);
+  font-size: 10px;
+}
+@media (max-width: 760px) {
+  .export-workflow-card { padding: 16px; }
+  .export-sources-row { grid-template-columns: 1fr; }
+  .export-upload-row { align-items: stretch; flex-direction: column; }
+  .export-upload-controls,
+  .export-form-grid { grid-template-columns: 1fr; }
+  .export-review-actions { align-items: stretch; flex-direction: column; }
+  .export-review-actions > div { width: 100%; }
+  .export-review-actions button { flex: 1; }
+  .export-history button { grid-template-columns: 1fr; gap: 3px; }
+}
