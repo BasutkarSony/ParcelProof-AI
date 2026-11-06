@@ -241,7 +241,6 @@ export default function App() {
     tracking_number: '',
     carrier: '',
     amount: '',
-    signature_obtained: false,
     evidence_text: ''
   })
   const [inspectLoading, setInspectLoading] = useState(false)
@@ -398,7 +397,6 @@ export default function App() {
       carrier_name_other: order.carrier_name_other || '',
       status: order.status || 'DELIVERED',
       amount: order.amount !== undefined ? order.amount : '',
-      signature_obtained: Boolean(order.signature_obtained),
       evidence_text: order.evidence_text || ''
     })
     setCopiedPayload(false)
@@ -423,7 +421,6 @@ export default function App() {
       carrier_name_other: remediationForm.carrier === 'OTHER' ? remediationForm.carrier_name_other : '',
       status: remediationForm.status || selectedOrder.status || 'SHIPPED',
       amount: remediationForm.amount !== '' ? parseFloat(remediationForm.amount) : 0,
-      signature_obtained: remediationForm.signature_obtained,
       evidence_text: remediationForm.evidence_text
     }
 
