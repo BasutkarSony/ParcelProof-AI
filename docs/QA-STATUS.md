@@ -16,9 +16,9 @@ Both repository creation dates fall after the Hackathon Submission Period began 
 
 ## Latest verified build
 
-Latest green workflow: [GitHub Actions run 42241783179](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42241783179)
+Latest green workflow: [GitHub Actions run 42242821982](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42242821982)
 
-Commit: `635282cde69cebcc929f72390ed970e005d80ea9`
+Current `main` head: `96d659826fc9ab9270c5faf99c02e7cc5ab5b2ad` (demo script and product-positioning documentation). The latest application behavior changes are in `635282cde69cebcc929f72390ed970e005d80ea9`, which is included in this head.
 
 | Check | Result |
 |---|---|
@@ -38,8 +38,8 @@ These are automated repository tests. They do not replace live testing of Google
 - Service: [parcelproof-ai-058h](https://dashboard.render.com/web/srv-dbmpto5g1s2s73bjbtgg)
 - URL: https://parcelproof-ai-058h.onrender.com
 - Plan: Free web service, Docker runtime, Singapore region.
-- Current deployed commit: `635282cde69cebcc929f72390ed970e005d80ea9`.
-- Current deployment: `dep-dbmuvpmc6qcc73bk795g`, status **LIVE**.
+- Current deployed commit: `96d659826fc9ab9270c5faf99c02e7cc5ab5b2ad`.
+- Current deployment: `dep-dbmv2umc6qcc73bkbpug`, status **LIVE**.
 - Render application logs show `GET /health` HTTP 200 after this deployment.
 - The public app root returned HTTP 401, which is expected because the demo is protected by shared HTTP Basic Authentication.
 - Render deploys from `main` after repository checks pass.
@@ -62,6 +62,12 @@ Latest direct row-count query:
 | inspection_reviews | 0 |
 
 The hosted PayPal Sandbox checkout created one paid order, one linked shipment and one finalized manifest derived from the purchased item lines. The manifest fingerprint is stored. The shipment remains on hold because no packing inspection or human decision has been completed.
+
+Public repository working-tree hygiene check on the current `main` tree:
+- No committed `.env` files except the intended `backend/.env.example`.
+- No database files, local upload directories, `node_modules`, compiled frontend `dist`, Python bytecode or `__pycache__` paths were found in the current tree.
+- `.gitignore` and `.dockerignore` exclude local secrets, database files, build outputs and local inspection photos.
+- A full commit-history secret scan has not been completed; that remains an open release check.
 
 Previously inspected security and storage setup:
 - All nine ParcelProof application tables exist and have RLS enabled.
