@@ -1,11 +1,14 @@
 import hashlib
 import json
 import sqlite3
+import psycopg
 import uuid
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+
+from .database import connect_postgres
 
 DATA_DIR = Path(os.getenv("PARCELPROOF_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 DB_PATH = DATA_DIR / "parcelproof.db"
@@ -54,7 +57,15 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaratio
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
 
 
-def _connect(timeout: float = 30.0) -> sqlite3.Connection:
+def _uses_postgres() -> bool:
+    return bool(os.getenv("DATABASE_URL", "").strip())
+
+
+def _connect(timeout: float = 30.0):
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url:
+        return connect_postgres(database_url, timeout=timeout)
+
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), timeout=timeout)
     conn.row_factory = sqlite3.Row
@@ -63,6 +74,41 @@ def _connect(timeout: float = 30.0) -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    if _uses_postgres():
+        conn = _connect()
+        try:
+            migrations_dir = Path(__file__).resolve().parent.parent / "migrations"
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS parcelproof_schema_migrations (
+                    version TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                )
+                """
+            )
+            applied = {
+                row["version"]
+                for row in conn.execute(
+                    "SELECT version FROM parcelproof_schema_migrations"
+                ).fetchall()
+            }
+            for migration in sorted(migrations_dir.glob("*.sql")):
+                version = migration.stem
+                if version in applied:
+                    continue
+                conn.execute_script(migration.read_text(encoding="utf-8"))
+                conn.execute(
+                    "INSERT INTO parcelproof_schema_migrations (version, applied_at) VALUES (?, ?)",
+                    (version, datetime.now(timezone.utc).isoformat()),
+                )
+                conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return
+
     conn = _connect()
     try:
         conn.executescript(
@@ -193,8 +239,12 @@ def init_db() -> None:
         _ensure_column(conn, "orders", "buyer_name", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "orders", "shipping_address", "TEXT NOT NULL DEFAULT '{}'")
         _ensure_column(conn, "order_items", "fragile", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "order_items", "item_position", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "manifest_items", "source_order_item_id", "TEXT")
+        _ensure_column(conn, "manifest_items", "item_position", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "inspection_reviews", "review_position", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "inspection_photos", "storage_path", "TEXT")
+        _ensure_column(conn, "inspection_photos", "photo_position", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "shipments", "buyer_name", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(
             conn, "shipments", "tracking_submission_status",
