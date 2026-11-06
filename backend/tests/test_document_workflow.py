@@ -18,7 +18,7 @@ class DocumentValidationTests(unittest.TestCase):
     def test_file_signatures(self):
         self.assertEqual(detect_document_mime(b"%PDF-1.7 data"), "application/pdf")
         self.assertEqual(detect_document_mime(b"\xff\xd8\xffx"), "image/jpeg")
-        self.assertEqual(detect_document_mime(b"\x89PNG\r\n\x1ax"), "image/png")
+        self.assertEqual(detect_document_mime(b"\x89PNG\r\n\x1a\nx"), "image/png")
         self.assertEqual(detect_document_mime(b"RIFF1234WEBPpayload"), "image/webp")
 
     def test_reject_unknown_or_oversized(self):
