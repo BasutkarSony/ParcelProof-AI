@@ -19,6 +19,42 @@ class PostgreSQLPersistenceTests(unittest.TestCase):
     def setUpClass(cls):
         store.init_db()
 
+    def test_concurrent_manifest_finalization_has_one_winner(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        manifest = store.create_manifest(
+            shipment_order_id=f"SHP-{uuid.uuid4()}",
+            items=[
+                {
+                    "sku": "MUG-CER-001",
+                    "description": "Ceramic Coffee Mug",
+                    "expected_qty": 1,
+                    "unit_value_cents": 1800,
+                    "fragile": True,
+                }
+            ],
+        )
+        barrier = Barrier(2)
+
+        def finalize_once():
+            barrier.wait(timeout=10)
+            try:
+                return ("success", store.finalize_manifest(manifest["id"]))
+            except ValueError as exc:
+                return ("rejected", str(exc))
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(finalize_once)
+            second = executor.submit(finalize_once)
+            results = [first.result(timeout=30), second.result(timeout=30)]
+
+        self.assertEqual(sum(result[0] == "success" for result in results), 1)
+        self.assertEqual(sum(result[0] == "rejected" for result in results), 1)
+        finalized = store.get_manifest(manifest["id"])
+        self.assertEqual(finalized["status"], "FINALIZED")
+        self.assertTrue(finalized["manifest_hash"])
+
     def test_concurrent_retries_create_only_one_shipment(self):
         from concurrent.futures import ThreadPoolExecutor
         from threading import Barrier
