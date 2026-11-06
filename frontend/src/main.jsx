@@ -951,34 +951,20 @@ export default function App() {
                         />
                       </div>
 
-                      <div className="form-checkbox-row">
-                        <input
-                          type="checkbox"
-                          id="sig_check"
-                          checked={remediationForm.signature_obtained}
-                          onChange={e => setRemediationForm({ ...remediationForm, signature_obtained: e.target.checked })}
-                        />
-                        <label htmlFor="sig_check" style={{ cursor: 'pointer', margin: 0 }}>
-                          <span>Merchant Attestation: Physical/ePOD Signature Slip On File</span>
-                          <small style={{ display: 'block', fontSize: '10px', color: '#687e6d', fontWeight: 400, marginTop: '2px' }}>
-                            Note: PayPal requires online verifiable carrier delivery documentation for $750+ INR protection. Merchant attestation alone without carrier scan corroboration is marked unverified.
-                          </small>
-                        </label>
-                      </div>
                     </div>
 
                     <div className="form-group" style={{ marginTop: '12px' }}>
-                      <label htmlFor="rem-evidence">Official Carrier Scan Evidence Notes / ePOD Record</label>
+                      <label htmlFor="rem-evidence">Shipment Notes (Merchant-Entered)</label>
                       <textarea
                         id="rem-evidence"
                         className="form-control"
                         rows="3"
                         value={remediationForm.evidence_text}
                         onChange={e => setRemediationForm({ ...remediationForm, evidence_text: e.target.value })}
-                        placeholder="e.g. Delivered and signed by: C. Adams, Boston, MA 02108. FedEx Direct Signature confirmation on file."
+                        placeholder="e.g. Carrier portal shows parcel delivered in Hyderabad; reference the carrier event ID if available."
                       />
                       <small style={{ display: 'block', fontSize: '10px', color: '#687e6d', marginTop: '4px' }}>
-                        Carrier scan text must document recipient signature confirmation and delivery location to satisfy Seller Protection criteria for high-value orders ($750+).
+                        Notes entered here are not independently verified. Prefer a carrier-generated tracking record or electronic proof of delivery.
                       </small>
                     </div>
 
@@ -988,7 +974,7 @@ export default function App() {
                         onClick={handleRemediationSubmit}
                         disabled={inspectLoading}
                       >
-                        {inspectLoading ? 'Recalculating…' : 'Recalculate Protection Score ↻'}
+                        {inspectLoading ? 'Recalculating…' : 'Recalculate Evidence Checks ↻'}
                       </button>
                     </div>
                   </div>
@@ -1118,7 +1104,7 @@ function ShipmentReviewMain({
       <section className="hero" aria-label="ParcelProof AI overview">
         <div className="hero-copy">
           <div className="eyebrow">
-            <span aria-hidden="true">●</span> PRE-SUBMISSION SHIPMENT EVIDENCE &amp; SELLER PROTECTION
+            <span aria-hidden="true">●</span> SHIPMENT RECORD COMPLETENESS &amp; FULFILMENT WORKFLOW
           </div>
           <h1>
             Proof before
@@ -1126,8 +1112,7 @@ function ShipmentReviewMain({
             <span>you submit.</span>
           </h1>
           <p>
-            Catch missing tracking numbers, invalid transit chronology, carrier mismatches, and $750+ high-value signature
-            omissions before transmitting shipping evidence to PayPal Sandbox.
+            Catch missing shipment details, inconsistent dates, carrier mismatches, and possible delivery exceptions before the merchant takes the next fulfilment action.
           </p>
         </div>
 
@@ -1137,8 +1122,8 @@ function ShipmentReviewMain({
               <ShieldIcon />
             </div>
             <div>
-              <strong>Seller Protection</strong>
-              <small>Evidence Pre-Screening</small>
+              <strong>Shipment Evidence</strong>
+              <small>Operational Record Checks</small>
             </div>
           </div>
           <div className="art-lines">
@@ -1146,7 +1131,7 @@ function ShipmentReviewMain({
             <span></span>
             <span></span>
           </div>
-          <div className="art-tag">AUDITABLE RULE-BASED NLP</div>
+          <div className="art-tag">AUDITABLE RULE-BASED CHECKS</div>
         </div>
       </section>
 
@@ -1154,9 +1139,9 @@ function ShipmentReviewMain({
         <div className="arch-info">
           <div className="arch-badge">DETERMINISTIC RULES</div>
           <div className="arch-text">
-            <strong>Deterministic NLP &amp; PayPal Policy Rules Engine</strong>
+            <strong>Deterministic Shipment Data Checks</strong>
             <p>
-              Deterministic checks review carrier formats, shipment timelines, destination consistency, and selected signature guidance. Results are advisory, not a PayPal eligibility decision.
+              Rule-based checks review entered tracking details, dates, destination text and exception phrases. They do not connect to carrier systems or assess PayPal Seller Protection eligibility.
             </p>
           </div>
         </div>
@@ -1165,29 +1150,29 @@ function ShipmentReviewMain({
           onClick={() => setShowArchDetails(prev => !prev)}
           aria-expanded={showArchDetails}
         >
-          {showArchDetails ? 'Hide criteria ▲' : 'View 5 core criteria ▼'}
+          {showArchDetails ? 'Hide criteria ▲' : 'View 4 core checks ▼'}
         </button>
       </section>
 
       {showArchDetails && (
         <div className="arch-details-drawer">
-          <strong>Evaluated Seller Protection &amp; Data Quality Checks:</strong>
+          <strong>Shipment record checks in this prototype:</strong>
           <div className="arch-grid">
             <div className="arch-card">
               <strong>1. Carrier Pattern Verification</strong>
               Detects format consistency for UPS (1Z), FedEx, USPS (9x), DHL, and warns on carrier mismatch.
             </div>
             <div className="arch-card">
-              <strong>2. High-Value $750+ Signature</strong>
-              Checks if orders ≥ $750 USD include verified signature confirmation required by PayPal.
+              <strong>2. Shipment Timeline</strong>
+              Flags missing or inconsistent shipment and delivery dates.
             </div>
             <div className="arch-card">
               <strong>3. Transit Chronology</strong>
               Verifies dispatch and delivery milestones (disallows delivery prior to shipment or in the future).
             </div>
             <div className="arch-card">
-              <strong>4. Proof of Delivery / Destination</strong>
-              Matches recipient city/postal-code tokens against carrier delivery scan notes.
+              <strong>4. Destination Text Matching</strong>
+              Looks for destination words in merchant-entered notes. This is a text match, not proof of carrier delivery.
             </div>
             <div className="arch-card">
               <strong>5. Exception Extraction</strong>
