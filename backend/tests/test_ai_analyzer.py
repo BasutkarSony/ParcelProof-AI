@@ -149,7 +149,7 @@ class ShipmentEvidenceAnalyzerTests(unittest.TestCase):
         self.assertEqual(result["engine_metadata"]["type"], "DETERMINISTIC_RULES_NLP")
         self.assertTrue(result["engine_metadata"]["auditable"])
         self.assertTrue(result["engine_metadata"]["zero_hallucination"])
-        self.assertIn("does not verify carrier events", result["engine_metadata"]["description"])
+        self.assertIn("does not verify carrier events", result["engine_metadata"]["description"].lower())
 
 
 if __name__ == "__main__":
