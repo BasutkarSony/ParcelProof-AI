@@ -768,11 +768,11 @@ class InspectionAPITests(unittest.TestCase):
 
     def test_gemini_quota_limit_returns_429_and_preserves_evidence(self):
         from fastapi import HTTPException
-        from app.packing_inspector import GeminiUnavailableError
+        from app.packing_inspector import GeminiUnavailableError, PHOTO_DIR
 
         manifest = self._finalized_manifest_via_api()
         photos = [self._make_upload(_make_jpeg())]
-        before_files = set(self._pi.PHOTO_DIR.iterdir())
+        before_files = set(PHOTO_DIR.iterdir()) if PHOTO_DIR.exists() else set()
 
         with patch(
             "app.main.run_inspection",
@@ -786,7 +786,7 @@ class InspectionAPITests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.status_code, 429)
         self.assertIn("preserved as failed inspection", ctx.exception.detail)
-        new_files = set(self._pi.PHOTO_DIR.iterdir()) - before_files
+        new_files = (set(PHOTO_DIR.iterdir()) if PHOTO_DIR.exists() else set()) - before_files
         self.assertEqual(len(new_files), 1)
         inspections = list_inspections_for_manifest(manifest["id"])
         self.assertEqual(inspections[0]["inspection_status"], "AI_FAILED")
