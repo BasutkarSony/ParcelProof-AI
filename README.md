@@ -173,45 +173,28 @@ PayPal OAuth was verified in Sandbox and the tracking write gate displayed as lo
 
 The deterministic shipment analyzer reports shipment-record completeness only. It does not calculate Seller Protection eligibility. PayPal makes its own decision under the requirements applicable to the seller, country, account, transaction and claim.
 
-## Transaction-to-document reconciliation
+## Payment-to-export document workflow
 
-The first reconciliation API accepts normalized document fields and compares them against the paid PayPal order and finalized shipment manifest:
+The shipment workspace supports this sequence for a real PayPal-linked shipment:
 
-`POST /api/shipments/{shipment_order_id}/reconcile`
+1. Upload a commercial invoice or packing list (PDF, JPEG, PNG or WebP; 10 MB maximum) to the private `shipment-documents` bucket.
+2. Create an unverified extraction draft with Gemini when configured. If extraction is unavailable, the original remains saved for manual entry.
+3. Correct the extracted fields and explicitly confirm them as the merchant.
+4. Reconcile the confirmed document against the paid PayPal order and finalized, hashed manifest.
+5. Retrieve the original private file and review saved reconciliation history.
 
-Example request body:
+Relevant API routes:
 
-```json
-{
-  "document": {
-    "document_type": "COMMERCIAL_INVOICE",
-    "document_number": "INV-1001",
-    "currency": "USD",
-    "total_amount": "25.00",
-    "recipient_name": "Alex Buyer",
-    "recipient_address": {
-      "address_line_1": "123 River Road",
-      "city": "Berlin",
-      "postal_code": "10115",
-      "country_code": "DE"
-    },
-    "items": [
-      {
-        "sku": "SKU-1",
-        "description": "Handmade Ceramic Cup",
-        "quantity": 2,
-        "unit_amount": "12.50"
-      }
-    ]
-  }
-}
-```
+- `POST /api/shipments/{shipment_order_id}/documents` — multipart upload with `file` and `document_type`.
+- `GET /api/shipments/{shipment_order_id}/documents` — list records without private storage paths.
+- `GET /api/documents/{document_id}/file` — retrieve the private original after verifying its SHA-256 hash.
+- `PUT /api/documents/{document_id}/confirm` — validate and save merchant-reviewed fields.
+- `POST /api/shipments/{shipment_order_id}/reconcile` — reconcile a confirmed `document_id`; structured input requires `merchant_confirmed: true`.
+- `GET /api/shipments/{shipment_order_id}/reconciliations` — list saved reconciliation runs.
 
-The engine checks currency, invoice total, recipient details, item identity and quantities, and the source links between manifest lines and the exact PayPal order items. It returns source-referenced checks with `MATCH`, `MISMATCH`, `NOT_CHECKED` or `NOT_APPLICABLE` statuses. A missing value is never counted as a match. Invoice-total differences require review because freight, tax, duties or discounts can make unlike totals differ.
+The reconciliation engine checks currency where applicable, invoice totals, recipient details, order-item identity and quantities, exact paid-order line-item references in the manifest, and document line items. Missing or unreadable fields remain for review. Invoice-total differences require review because freight, tax, discounts or duties may make unlike totals differ.
 
-This endpoint currently accepts **normalized structured fields**. PDF/image upload, extraction, persistence of reconciliation runs and the merchant-facing reconciliation screen are subsequent implementation stages; the endpoint does not claim to extract documents yet.
-
-The result is an operational consistency check, not customs clearance, carrier proof, export-compliance advice or PayPal Seller Protection eligibility.
+A Gemini response is an unverified draft, never a decision. Merchant confirmation is required before reconciliation. The output is an operational consistency check, not customs clearance, carrier proof, export-compliance advice or PayPal Seller Protection eligibility.
 
 ## Testing
 

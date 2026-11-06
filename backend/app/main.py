@@ -868,7 +868,9 @@ async def upload_shipment_document(
         raise HTTPException(status_code=status, detail=str(exc)) from None
 
     from uuid import uuid4
-    filename = str(file.filename or "export-document").replace("\\", "/").split("/")[-1][:180]
+    filename = str(file.filename or "export-document").replace("\\", "/").split("/")[-1]
+    filename = "".join(char for char in filename if char.isprintable() and char not in {'"', "'", "\\", "/"})[:180].strip()
+    filename = filename or "export-document"
     extension = {"application/pdf": ".pdf", "image/jpeg": ".jpg",
                  "image/png": ".png", "image/webp": ".webp"}[mime_type]
     storage_path = f"{shipment_order_id}/documents/{uuid4()}{extension}"
@@ -931,11 +933,19 @@ def download_shipment_document(document_id: str):
         raise HTTPException(status_code=503, detail=str(exc)) from None
     except object_storage.StorageOperationError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
-    filename = str(document["original_filename"]).replace('"', "")[:150]
+    if sha256_document(content) != document.get("sha256"):
+        raise HTTPException(status_code=502, detail="Stored export document failed its SHA-256 integrity check.")
+    filename = "".join(
+        char for char in str(document["original_filename"])
+        if char.isprintable() and char not in {'"', "'", "\\", "/", "\\r", "\\n"}
+    )[:150].strip() or "export-document"
     return Response(
         content=content, media_type=document["mime_type"],
-        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
-                 "Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
     )
 
 
@@ -976,9 +986,19 @@ def reconcile_shipment_documents(shipment_order_id: str, payload: dict):
     order = get_order(order_id)
     if order is None:
         raise HTTPException(status_code=404, detail="The linked PayPal checkout order was not found.")
+    if str(order.get("paypal_capture_id") or "").strip() != str(shipment.get("paypal_capture_id") or "").strip():
+        raise HTTPException(status_code=409, detail="The shipment capture does not match its linked PayPal checkout.")
+    if (
+        shipment.get("paypal_order_id")
+        and order.get("paypal_order_id")
+        and str(shipment["paypal_order_id"]).strip() != str(order["paypal_order_id"]).strip()
+    ):
+        raise HTTPException(status_code=409, detail="The shipment PayPal order does not match its linked checkout.")
     manifest = get_manifest_for_shipment(shipment_order_id)
     if manifest is None:
         raise HTTPException(status_code=404, detail="Create a shipment manifest before reconciliation.")
+    if manifest.get("shipment_order_id") != shipment_order_id:
+        raise HTTPException(status_code=409, detail="The selected manifest belongs to a different shipment.")
 
     document_id = payload.get("document_id") if isinstance(payload, dict) else None
     if document_id:
@@ -989,11 +1009,20 @@ def reconcile_shipment_documents(shipment_order_id: str, payload: dict):
             raise HTTPException(status_code=409, detail="The document belongs to a different shipment.")
         if saved.get("document_status") != "CONFIRMED" or not isinstance(saved.get("confirmed_data"), dict):
             raise HTTPException(status_code=409, detail="Confirm the document fields before reconciliation.")
-        document = saved["confirmed_data"]
+        try:
+            document = validate_confirmed_document(saved["confirmed_data"], saved["document_type"])
+        except DocumentValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
     else:
-        document = payload.get("document") if isinstance(payload, dict) else None
-        if not isinstance(document, dict):
+        raw_document = payload.get("document") if isinstance(payload, dict) else None
+        if not isinstance(raw_document, dict):
             raise HTTPException(status_code=422, detail="Provide a confirmed document_id or normalized document object.")
+        if raw_document.get("merchant_confirmed") is not True:
+            raise HTTPException(status_code=409, detail="Merchant confirmation is required before reconciliation.")
+        try:
+            document = validate_confirmed_document(raw_document, raw_document.get("document_type"))
+        except DocumentValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
 
     try:
         result = reconcile_order_document(order, manifest, document)

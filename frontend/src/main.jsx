@@ -1330,7 +1330,7 @@ function ShipmentReviewMain({
 
                 {order.evidence_text && (
                   <div className="evidence-snippet">
-                    <strong>Shipment activity:</strong>
+                    <strong>Shipment note:</strong>
                     {order.evidence_text}
                   </div>
                 )}
