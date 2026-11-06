@@ -1006,7 +1006,7 @@ async def create_packing_inspection(
                     "inspection_state": "AI_FAILED",
                     "failure_message": failure_message,
                     "human_review_required": True,
-                    "retry_available": True,
+                    "retry_available": status_code in (429, 503),
                 },
                 photo_records=photo_records,
                 inspection_status="AI_FAILED",
