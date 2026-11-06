@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS order_items (
     quantity INTEGER NOT NULL,
     unit_price_cents INTEGER NOT NULL,
     line_total_cents INTEGER NOT NULL,
-    fragile INTEGER NOT NULL DEFAULT 0
+    fragile INTEGER NOT NULL DEFAULT 0,
+    item_position INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_orders_paypal_order_id ON orders(paypal_order_id);
@@ -59,7 +60,8 @@ CREATE TABLE IF NOT EXISTS manifest_items (
     expected_qty INTEGER NOT NULL,
     unit_value_cents INTEGER,
     fragile INTEGER NOT NULL DEFAULT 0,
-    source_order_item_id TEXT
+    source_order_item_id TEXT,
+    item_position INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_manifest_items_manifest_id ON manifest_items(manifest_id);
 CREATE INDEX IF NOT EXISTS idx_manifest_items_source_order_item
@@ -85,6 +87,7 @@ CREATE TABLE IF NOT EXISTS inspection_reviews (
     decision TEXT NOT NULL,
     reviewer_label TEXT NOT NULL,
     notes TEXT NOT NULL DEFAULT '',
+    review_position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_inspection_reviews_inspection_id
@@ -96,6 +99,7 @@ CREATE TABLE IF NOT EXISTS inspection_photos (
     sha256 TEXT NOT NULL,
     mime_type TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
+    photo_position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_inspection_photos_inspection_id
