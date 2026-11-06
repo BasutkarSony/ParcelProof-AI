@@ -11,6 +11,11 @@ from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.validator import validate_order
 from app.ai_analyzer import analyze_shipment_evidence
+from app.reconciliation import (
+    ReconciliationInputError,
+    ReconciliationPreconditionError,
+    reconcile_order_document,
+)
 from app import object_storage
 from app.paypal_client import (
     configured as paypal_configured,
@@ -804,6 +809,42 @@ def get_shipment_manifest(shipment_order_id: str):
             detail=f"No manifest found for shipment '{shipment_order_id}'.",
         )
     return manifest
+
+
+@app.post("/api/shipments/{shipment_order_id}/reconcile")
+def reconcile_shipment_documents(shipment_order_id: str, payload: dict):
+    """Compare a normalized export document with a paid order and finalized manifest.
+
+    The upload/OCR step is deliberately separate: this endpoint only accepts
+    normalized fields and never treats unparsed file text as verified data.
+    """
+    shipment = get_shipment_by_order_id(shipment_order_id)
+    if shipment is None:
+        raise HTTPException(status_code=404, detail="A persisted PayPal shipment is required.")
+    checkout_order_id = shipment.get("checkout_order_id")
+    if not checkout_order_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Sample shipments cannot be reconciled against a PayPal checkout.",
+        )
+    order = get_order(checkout_order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="The linked PayPal checkout order was not found.")
+    manifest = get_manifest_for_shipment(shipment_order_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="Create a shipment manifest before reconciliation.")
+    document = payload.get("document") if isinstance(payload, dict) else None
+    if not isinstance(document, dict):
+        raise HTTPException(
+            status_code=422,
+            detail="Provide a normalized document object in the 'document' field.",
+        )
+    try:
+        return reconcile_order_document(order, manifest, document)
+    except ReconciliationPreconditionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except ReconciliationInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
 @app.get("/api/manifests/{manifest_id}")
