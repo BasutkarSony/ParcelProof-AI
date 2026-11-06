@@ -2,11 +2,11 @@
 
 > **Canonical PayPal AI Hackathon repository.** Use this repository and its hosted demo for the current submission. The older [ShipProof-AI repository](https://github.com/BasutkarSony/ShipProof-AI) is a historical snapshot and is not the current source or deployment.
 
-### PayPal-connected order fulfilment and shipment evidence
+### PayPal-connected AI packing verification for small online merchants
 
-**From a verified Sandbox payment to a reviewed packing record.**
+**Catch avoidable pick-and-pack mistakes before parcels leave your workspace.**
 
-ParcelProof AI is a merchant fulfilment workspace that links PayPal Sandbox checkout to the exact purchased items, a finalized packing manifest, AI-assisted photo observations, a human review decision, and a guarded PayPal tracking workflow.
+ParcelProof AI links a verified PayPal payment to the exact purchased items, a finalized packing manifest, pre-seal packing photographs, AI observations and a separate human review decision. Its MVP focuses on packing accuracy and a traceable record tied to the paid order.
 
 Built for the **PayPal AI Hackathon 2026**.
 
@@ -18,9 +18,9 @@ Built for the **PayPal AI Hackathon 2026**.
 
 ## The problem
 
-For small online merchants, payment details, product lists, packing checks and shipment tracking can sit in separate tools. When a buyer reports a missing or incorrect item, the merchant may have to reconstruct what was purchased, packed and shipped.
+Small online merchants often handle payment, order lines, warehouse picking and packing checks in separate tools. When an item is missing or the wrong item is packed, the merchant has to reconstruct what the buyer paid for, what the packing list declared, what was visible before sealing, and who reviewed it.
 
-**ParcelProof AI connects those steps to one paid order and shipment record.**
+**ParcelProof AI connects the paid order to a finalized packing manifest, packing photographs, AI observations and a human decision.** The goal is to catch visible pick-and-pack discrepancies before dispatch and keep one traceable operational record for customer support.
 
 ## What it does
 
@@ -29,7 +29,7 @@ For small online merchants, payment details, product lists, packing checks and s
 | Buyer checkout | A small storefront for physical merchandise with recipient and delivery details. |
 | PayPal payment | PayPal Sandbox Orders v2 checkout with server-priced item lines and verified capture. |
 | Order-derived manifest | Creates a packing manifest from the exact items and quantities in the paid order. |
-| Packing inspection | Gemini Vision first, with one bounded retry and an optional OpenAI Vision fallback. |
+| Packing inspection | Gemini Vision compares visible packing photos with the finalized manifest and reports observations/uncertainty; the merchant makes the decision. |
 | Evidence record | Stores photo hashes and the finalized manifest fingerprint with each inspection. |
 | Human review | Records an explicit merchant decision separately from model observations. |
 | PayPal tracking | Prepares and submits a tracking update to the matching Orders v2 order and capture after all required checks. |
@@ -40,11 +40,10 @@ For small online merchants, payment details, product lists, packing checks and s
 2. Backend verifies the completed PayPal capture, amount, currency and order linkage.
 3. ParcelProof creates a persistent shipment and a draft manifest from the purchased items.
 4. Merchant reviews and finalizes the manifest; its contents are fingerprinted.
-5. Merchant uploads up to five packing photographs.
-6. Gemini Vision inspects the photos. After a temporary Gemini outage, an optional OpenAI Vision fallback can run using all uploaded photos.
-7. The model returns structured observations and uncertainty. It never approves or rejects a shipment.
-8. A merchant reviews the evidence and records APPROVED, REJECTED or NEEDS_CORRECTION.
-9. PayPal tracking submission remains blocked until the stored payment, finalized manifest and latest human approval satisfy the backend checks.
+5. Before sealing the parcel, the merchant uploads up to five clear packing photographs showing the actual items.
+6. Gemini Vision compares visible items with the finalized manifest and returns structured observations and uncertainty. A 503 receives one bounded retry; a 429 is not immediately retried. An optional OpenAI fallback can run when configured.
+7. The model never approves or rejects a shipment. A merchant reviews the original photos and model observations and records APPROVED, REJECTED or NEEDS_CORRECTION.
+8. The approved packing record remains linked to the paid order and manifest. A guarded PayPal tracking action is available in the backend, but tracking writes remain disabled by default in the hosted demo.
 
 ## AI and evidence safeguards
 
@@ -59,7 +58,7 @@ For small online merchants, payment details, product lists, packing checks and s
 - The app distinguishes what is visible in photos from what is not visible. A sealed parcel's contents cannot be verified from its exterior.
 - Deterministic shipment checks use rules and text-pattern heuristics. They are advisory, not a PayPal eligibility decision.
 
-Neither vision model is guaranteed to be error-free or independently auditable. ParcelProof AI does not guarantee PayPal Seller Protection. PayPal makes its own decisions.
+Neither vision model is guaranteed to be error-free or independently auditable. A photo cannot prove the contents of a sealed parcel. The current MVP does not fetch carrier events, so merchant-entered tracking notes are not carrier proof. ParcelProof AI does not calculate Seller Protection eligibility or guarantee a dispute outcome; PayPal makes those decisions.
 
 ## Merchant user manual
 
@@ -226,6 +225,7 @@ ParcelProof AI is a hackathon prototype, not an official PayPal product.
 - The hosted demo uses one shared password, not individual merchant accounts or role-based access control; reviewer labels are still self-entered demo labels, not verified identities.
 - Text entered by a merchant is not independent proof from a carrier.
 - Evidence-quality results are advisory and do not predict dispute outcomes or guarantee Seller Protection.
+- The primary MVP outcome is packing-error prevention and traceability. PayPal's India Seller Protection terms list claims that the item sent was not what was ordered ("Significantly Not As Described") as ineligible for Seller Protection; ParcelProof is not a claim-adjudication tool. See [PayPal India Seller Protection](https://www.paypal.com/in/legalhub/paypal/seller-protection).
 - Sample shipment records are for demonstration and testing.
 - PayPal Sandbox authentication does not prove that a real Sandbox tracking update has succeeded. A deliberate tracking test remains necessary.
 
