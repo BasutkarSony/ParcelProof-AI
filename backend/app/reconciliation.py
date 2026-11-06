@@ -197,20 +197,34 @@ def reconcile_order_document(order: dict, manifest: dict, document: dict) -> dic
 
     doc_currency = _text(document.get("currency")).upper()
     order_currency = _text(order.get("currency")).upper()
-    _compare(
-        checks,
-        code="CURRENCY_MATCH",
-        field="currency",
-        expected=order_currency,
-        observed=doc_currency,
-        severity="BLOCKER",
-        message="Document currency matches the captured PayPal order.",
-        recommended_action="Correct the document currency or investigate the source order before dispatch.",
-        sources=[
-            {"record": "paypal_order", "id": order_ref, "field": "currency"},
-            {"record": "export_document", "id": document_ref, "field": "currency"},
-        ],
-    )
+    if document_type == "PACKING_LIST" and not doc_currency:
+        _check(
+            checks,
+            code="CURRENCY_NOT_APPLICABLE",
+            status="NOT_APPLICABLE",
+            severity="INFO",
+            field="currency",
+            expected=None,
+            observed=None,
+            message="A packing list is not required to state a monetary currency.",
+            recommended_action="No action required.",
+            sources=[{"record": "export_document", "id": document_ref, "field": "document_type"}],
+        )
+    else:
+        _compare(
+            checks,
+            code="CURRENCY_MATCH",
+            field="currency",
+            expected=order_currency,
+            observed=doc_currency,
+            severity="BLOCKER",
+            message="Document currency matches the captured PayPal order.",
+            recommended_action="Correct the document currency or investigate the source order before dispatch.",
+            sources=[
+                {"record": "paypal_order", "id": order_ref, "field": "currency"},
+                {"record": "export_document", "id": document_ref, "field": "currency"},
+            ],
+        )
 
     if document_type == "COMMERCIAL_INVOICE":
         order_total = _money(order.get("total"), "order.total", required=True)
