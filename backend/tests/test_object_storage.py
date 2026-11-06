@@ -40,7 +40,7 @@ class SupabasePrivateStorageTests(unittest.TestCase):
         self.assertEqual(kwargs["data"], b"image-bytes")
 
     def test_legacy_service_role_jwt_keeps_bearer_header(self):
-        headers = object_storage._headers("eyJlegacy-service-role-jwt")
+        headers = object_storage._headers("eyJlegacy-service-role-jwt", "eyJlegacy-service-role-jwt")
         self.assertEqual(headers["apikey"], "eyJlegacy-service-role-jwt")
         self.assertEqual(headers["Authorization"], "Bearer eyJlegacy-service-role-jwt")
 
