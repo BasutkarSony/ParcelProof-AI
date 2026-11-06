@@ -1446,7 +1446,7 @@ class GeminiProviderDiagnosticTests(unittest.TestCase):
         diagnostic = pi._gemini_failure_message(ProviderError("429"))
         self.assertIn("HTTP 429", diagnostic)
         self.assertIn("quota", diagnostic.lower())
-        self.assertIn("rate window", diagnostic.lower())
+        self.assertIn("short-window rate limit", diagnostic.lower())
         self.assertNotIn("temporarily unavailable", diagnostic.lower())
 
     def test_503_diagnostic_identifies_temporary_service_outage(self):
