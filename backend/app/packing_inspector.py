@@ -449,6 +449,40 @@ def _is_gemini_unavailable(exc: Exception) -> bool:
     )
 
 
+def _gemini_failure_message(exc: Exception) -> str:
+    """Return a safe, actionable provider diagnostic without exposing request data or keys."""
+    code = getattr(exc, "code", None)
+    status = str(getattr(exc, "status", "") or "").upper()
+    message = str(getattr(exc, "message", "") or str(exc)).upper()
+
+    if "API_KEY_INVALID" in message or "API KEY NOT VALID" in message or code == 401:
+        return (
+            "Gemini rejected the configured API key. Generate a valid Gemini API key "
+            "in Google AI Studio, update GEMINI_API_KEY in Render, and redeploy."
+        )
+    if code == 403 or "PERMISSION_DENIED" in status or "PERMISSION_DENIED" in message:
+        return (
+            "Gemini denied access to this API key (HTTP 403). Check that the key's "
+            "Google project has Gemini API access and that key restrictions allow it."
+        )
+    if code == 404 or "NOT_FOUND" in status or "NOT_FOUND" in message:
+        return (
+            "Gemini could not find the configured model (HTTP 404). Check GEMINI_MODEL "
+            "against the models available to this API key."
+        )
+    if code == 400 or "INVALID_ARGUMENT" in status or "INVALID_ARGUMENT" in message:
+        return (
+            "Gemini rejected the inspection request (HTTP 400). The configured model "
+            "or structured-output schema may not support this request."
+        )
+    if code is not None:
+        return f"Gemini inspection request failed with HTTP {code}."
+    return (
+        "Gemini inspection request failed before an HTTP response was received "
+        f"({type(exc).__name__}). Check the deployed Gemini model and API configuration."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public inspection entry point
 # ---------------------------------------------------------------------------
@@ -615,7 +649,7 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
             raise GeminiUnavailableError(
                 "Gemini service is temporarily unavailable after a retry (503/429). Add OPENAI_API_KEY to enable the optional vision fallback, or retry later."
             ) from None
-        raise RuntimeError("Gemini visual inspection API request failed.") from None
+        raise RuntimeError(_gemini_failure_message(final_error)) from None
 
     try:
         ai_result = _json.loads(response.text)
