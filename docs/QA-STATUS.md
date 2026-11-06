@@ -6,7 +6,7 @@ GitHub Actions run [42194859971](https://github.com/BasutkarSony/ParcelProof-AI/
 
 | Check | Result |
 |---|---|
-| Backend unit suite | **239 tests, passed** (3 PostgreSQL integration tests are skipped in this SQLite job and run separately) |
+| Backend unit suite | **239 tests discovered: 236 passed, 3 PostgreSQL-only tests skipped** in this SQLite job; all 3 skipped tests run separately and pass in the PostgreSQL job |
 | PostgreSQL integration | **3 tests passed** against a temporary PostgreSQL 17 service |
 | Frontend tests | **Passed** |
 | Oxlint | **Passed** |
