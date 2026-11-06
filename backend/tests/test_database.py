@@ -5,7 +5,28 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.database import HybridRow, qmark_to_pyformat
+from app.database import HybridRow, PostgresConnection, qmark_to_pyformat
+
+
+class FakeConnection:
+    def __init__(self):
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = False
+        self.executed = []
+
+    def execute(self, query, parameters=()):
+        self.executed.append((query, parameters))
+        return None
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed = True
 
 
 class DatabaseAdapterTests(unittest.TestCase):
@@ -28,6 +49,29 @@ class DatabaseAdapterTests(unittest.TestCase):
             qmark_to_pyformat(sql),
             "SELECT %s -- keep ? in comment\n/* ? */ WHERE id = %s",
         )
+
+    def test_connection_context_commits_without_closing(self):
+        raw = FakeConnection()
+        conn = PostgresConnection(raw)
+        with conn:
+            conn.execute("UPDATE orders SET payment_status = ? WHERE id = ?", ("PAID", "1"))
+        self.assertEqual(raw.commits, 1)
+        self.assertEqual(raw.rollbacks, 0)
+        self.assertFalse(raw.closed)
+        self.assertEqual(
+            raw.executed[0][0],
+            "UPDATE orders SET payment_status = %s WHERE id = %s",
+        )
+
+    def test_connection_context_rolls_back_without_closing(self):
+        raw = FakeConnection()
+        conn = PostgresConnection(raw)
+        with self.assertRaisesRegex(ValueError, "abort"):
+            with conn:
+                raise ValueError("abort")
+        self.assertEqual(raw.commits, 0)
+        self.assertEqual(raw.rollbacks, 1)
+        self.assertFalse(raw.closed)
 
     def test_hybrid_row_supports_name_and_position(self):
         row = HybridRow(["id", "status"], ("order-1", "PAID"))
