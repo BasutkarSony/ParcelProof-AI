@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,6 +23,12 @@ class StoreTests(unittest.TestCase):
     def tearDown(self):
         store.DB_PATH = Path(__file__).resolve().parent.parent / "data" / "shipproof.db"
         os.unlink(self._tmp_path)
+
+    def test_hosted_database_requirement_fails_closed_without_url(self):
+        with patch.dict(os.environ, {"PARCELPROOF_REQUIRE_DATABASE": "true"}):
+            with patch.dict(os.environ, {"DATABASE_URL": ""}):
+                with self.assertRaisesRegex(RuntimeError, "requires PostgreSQL"):
+                    init_db()
 
     def test_init_db_creates_tables(self):
         conn = store._connect()
