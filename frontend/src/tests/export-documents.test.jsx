@@ -53,8 +53,10 @@ describe('Export document workflow', () => {
     const fetchMock = globalThis.fetch
     const file = new File(['%PDF-1.4 test'], 'invoice.pdf', { type: 'application/pdf' })
 
+    let uploaded = false
     fetchMock.mockImplementation(async (url, options = {}) => {
       if (String(url).endsWith('/documents') && options.method === 'POST') {
+        uploaded = true
         return jsonResponse({
           document: documentRecord,
           message: 'The original document is saved. Enter fields manually or configure Gemini to extract a draft.'
@@ -79,7 +81,9 @@ describe('Export document workflow', () => {
           engine_version: '0.1.0'
         })
       }
-      if (String(url).endsWith('/documents')) return jsonResponse({ documents: [documentRecord] })
+      if (String(url).endsWith('/documents')) {
+        return jsonResponse({ documents: uploaded ? [documentRecord] : [] })
+      }
       if (String(url).endsWith('/reconciliations')) return jsonResponse({ reconciliations: [] })
       return jsonResponse({ detail: 'Not found' }, 404)
     })
