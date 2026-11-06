@@ -19,6 +19,46 @@ class PostgreSQLPersistenceTests(unittest.TestCase):
     def setUpClass(cls):
         store.init_db()
 
+    def test_concurrent_retries_create_only_one_shipment(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        order = store.create_order(
+            [{"sku": "MUG-CER-001", "quantity": 1}],
+            buyer_name="PostgreSQL Concurrent Buyer",
+        )
+        paypal_order_id = f"PAYPAL-{uuid.uuid4()}"
+        capture_id = f"CAPTURE-{uuid.uuid4()}"
+        store.set_paypal_order_id(order["id"], paypal_order_id)
+        store.set_capture(order["id"], capture_id, "PAID")
+
+        barrier = Barrier(2)
+
+        def create_once():
+            barrier.wait(timeout=10)
+            return store.create_shipment_for_order(
+                checkout_order_id=order["id"],
+                paypal_order_id=paypal_order_id,
+                paypal_capture_id=capture_id,
+                amount=order["total"],
+                currency="USD",
+                buyer_name="PostgreSQL Concurrent Buyer",
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(create_once)
+            second = executor.submit(create_once)
+            shipments = [first.result(timeout=30), second.result(timeout=30)]
+
+        self.assertEqual(shipments[0]["id"], shipments[1]["id"])
+        self.assertEqual(
+            len([
+                shipment for shipment in store.list_shipments()
+                if shipment["checkout_order_id"] == order["id"]
+            ]),
+            1,
+        )
+
     def test_checkout_to_shipment_manifest_inspection_and_review(self):
         order_items = [
             {"sku": "TOTE-COT-002", "quantity": 1},
