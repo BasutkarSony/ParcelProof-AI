@@ -477,7 +477,7 @@ def _gemini_failure_message(exc: Exception) -> str:
         )
     if code == 429 or "RESOURCE_EXHAUSTED" in status or "RESOURCE_EXHAUSTED" in message:
         return (
-            "Gemini rate limit or quota was reached (HTTP 429) after one retry. "
+            "Gemini rate limit or quota was reached (HTTP 429) after a retry. "
             "Check the Google AI project quota and usage window. Wait for a rate "
             "window or quota reset before trying again; repeated retries will not "
             "clear an exhausted quota."
@@ -485,12 +485,12 @@ def _gemini_failure_message(exc: Exception) -> str:
     if code == 503 or "UNAVAILABLE" in status or "UNAVAILABLE" in message:
         return (
             "Gemini service is temporarily unavailable or overloaded (HTTP 503) "
-            "after one retry. Wait for the provider to recover, then retry the "
+            "after a retry. Wait for the provider to recover, then retry the "
             "inspection. This is different from a quota limit."
         )
     if code in (500, 502, 504):
         return (
-            f"Gemini returned a temporary provider error (HTTP {code}) after one retry. "
+            f"Gemini returned a temporary provider error (HTTP {code}) after a retry. "
             "Wait briefly for the service to recover, then retry the inspection."
         )
     if code is not None:
