@@ -121,46 +121,47 @@ The local Vite app uses `http://127.0.0.1:8000` for API requests. In production,
 
 The submission repository is already published at [github.com/BasutkarSony/ParcelProof-AI](https://github.com/BasutkarSony/ParcelProof-AI). Clone it using the instructions in **Run locally**. The legacy repository-creation script is not part of the current setup or deployment process.
 
-## Deploy to Render
+## Deploy to Render — free tier
 
-A single Docker service serves both the built React frontend and FastAPI API from one public URL. The repository includes `Dockerfile` and `render.yaml`; Render reads these through a Blueprint.
+The included Blueprint uses a **Free Render web service** and Supabase for durable PostgreSQL data and private photo storage. It does not attach a Render disk and does not create a paid Render database.
 
-1. Sign in to [Render](https://render.com/).
-2. Choose **New + → Blueprint** and connect the existing `BasutkarSony/ParcelProof-AI` repository.
-3. Review the `parcelproof-ai` service and its paid plan and persistent-disk charges before confirming. Do not approve deployment unless you accept the recurring cost.
-4. Enter the PayPal Sandbox Client ID, PayPal Sandbox Secret and Gemini API key when Render prompts for them.
-5. After deployment, optionally add `OPENAI_API_KEY` in the service's Environment page to enable automatic vision fallback.
-6. Open the Render service URL and confirm `/health` returns `{"status":"ok"}`.
+1. In Render, choose **New + → Blueprint** and connect the existing `BasutkarSony/ParcelProof-AI` repository.
+2. Review the `parcelproof-ai` service and confirm its compute plan is **Free**.
+3. Configure the secrets listed below. Render prompts for `sync: false` values when creating a new Blueprint. When updating an existing service, add any missing values manually in **Environment**.
+4. Deploy and check that `/health` returns `{"status":"ok"}`.
 
-### Hosting and storage
+### Required Render environment variables
 
-The Blueprint uses the Singapore region and a Starter web service with a 1 GB persistent disk. The disk stores the SQLite database and uploaded inspection photos under `/var/data`, so they survive deploys and restarts.
+Set these values privately in Render. Never commit them to Git or share them in chat.
 
-Render currently lists the Starter web service at approximately **$7/month**, with SSD storage at approximately **$0.25/GB/month**. The 1 GB disk therefore adds roughly $0.25/month. Confirm the amount shown in your Render account before approving the Blueprint. Render's free web services do not support persistent disks and lose local filesystem changes when they restart or redeploy, so the included persistent-storage configuration is deliberately paid.
+| Variable | What to enter |
+|---|---|
+| `DATABASE_URL` | Supabase **Session Pooler** connection string, including the database password. Keep the password private. |
+| `SUPABASE_SECRET_KEY` | Supabase server-side API secret key (format `sb_secret_...`). |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase legacy `service_role` JWT. The private Storage REST API needs this as its Bearer token when the new `sb_secret_...` key is used. |
+| `PAYPAL_CLIENT_ID` | PayPal Sandbox REST app Client ID. |
+| `PAYPAL_CLIENT_SECRET` | PayPal Sandbox REST app Secret. |
+| `GEMINI_API_KEY` | Google AI Studio API key for packing-photo inspection. |
+| `PARCELPROOF_DEMO_USERNAME` | Demo login username. |
+| `PARCELPROOF_DEMO_PASSWORD` | A strong, unique demo password. |
 
-- [Render Blueprint guide](https://render.com/docs/infrastructure-as-code)
-- [Render pricing](https://render.com/pricing)
-- [Render persistent disks](https://render.com/docs/disks)
+The Blueprint sets `SUPABASE_URL`, `SUPABASE_STORAGE_BUCKET=inspection-photos`, `DATABASE_SSLMODE=require`, `PARCELPROOF_REQUIRE_DATABASE=true`, shared demo authentication and `PAYPAL_TRACKING_SUBMISSION_ENABLED=false`. It also sets `FRONTEND_URL` from the Render service URL. `OPENAI_API_KEY` is optional and enables the fallback vision provider.
 
-### Deployment environment variables
+**Important:** the hosted app fails startup if `DATABASE_URL` is missing; this prevents silently using an ephemeral SQLite file on Render Free. Local development continues to use SQLite unless `DATABASE_URL` is set.
 
-The Blueprint prompts for these secrets instead of storing them in Git:
+### Free-tier behaviour and limitations
 
-- `PAYPAL_CLIENT_ID`
-- `PAYPAL_CLIENT_SECRET`
-- `GEMINI_API_KEY`
-- `PARCELPROOF_DEMO_USERNAME`
-- `PARCELPROOF_DEMO_PASSWORD`
+- Render Free web services spin down after 15 minutes without inbound traffic. The next request can take about a minute while the service starts.
+- Render Free services have ephemeral filesystems and cannot attach persistent disks. ParcelProof therefore stores database records in Supabase Postgres and inspection photos in the private Supabase Storage bucket.
+- Supabase Free projects can pause after a week of very low database activity. A few real requests a day are usually enough to avoid pausing, but that is not guaranteed.
+- Render includes monthly usage allowances; outbound bandwidth beyond the included amount can incur additional charges. Monitor usage in the Render dashboard.
+- These free tiers are suitable for a hackathon demo, not a production reliability guarantee.
 
-The deployed app requires HTTP Basic Authentication. Choose a demo username and a strong, unique password during the Render setup, then share the access details only with intended judges/testers. The `/health` endpoint remains public for Render health checks. Local development leaves demo authentication disabled unless credentials are configured.
+References: [Render Free instances](https://render.com/docs/free), [Render Blueprint environment variables](https://render.com/docs/blueprint-spec), [Supabase project pausing](https://supabase.com/docs/guides/platform/free-project-pausing).
 
+### What has and has not been verified
 
-Optional:
-
-- `OPENAI_API_KEY` — enables fallback when Gemini is unavailable.
-- `OPENAI_VISION_MODEL` — defaults to `gpt-4o-mini`.
-
-The Blueprint automatically sets `FRONTEND_URL` from Render's public service URL and keeps `PAYPAL_TRACKING_SUBMISSION_ENABLED=false`. Public app pages, buyer/order APIs, and persisted evidence photos are protected by the shared demo password.
+GitHub Actions now tests the PostgreSQL code path against a temporary PostgreSQL 17 service, and the Docker build checks that SQL migrations are copied into the runtime image. The Supabase schema and RLS setup have also been applied and inspected. The actual Render service still needs its private environment variables configured and a live deployed checkout/photo-storage test before it can be called verified.
 
 ## Testing
 
@@ -208,7 +209,7 @@ Official documentation:
 
 ParcelProof AI is a hackathon prototype, not an official PayPal product.
 
-- Evidence analysis uses deterministic rules and text-pattern heuristics; it is not generative AI inference.
+- Shipment evidence checks use deterministic rules and text-pattern heuristics. Packing-photo observations use Gemini Vision, with an optional OpenAI Vision fallback.
 - Vision-model outputs can be wrong and require human review.
 - A photograph cannot prove the contents of a sealed package.
 - The hosted demo uses one shared password, not individual merchant accounts or role-based access control; reviewer labels are still self-entered demo labels, not verified identities.
@@ -225,6 +226,7 @@ ParcelProof-AI/
 ├── backend/
 │   ├── app/
 │   ├── data/sample_orders.json
+│   ├── migrations/
 │   ├── tests/
 │   ├── requirements.txt
 │   └── .env.example
