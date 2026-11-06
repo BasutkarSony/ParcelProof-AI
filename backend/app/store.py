@@ -1077,11 +1077,17 @@ def record_inspection_review(
     conn = _connect()
     try:
         # Serialize competing reviewer submissions before checking the current status.
-        conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute(
-            "SELECT inspection_status FROM packing_inspections WHERE id = ?",
-            (inspection_id,),
-        ).fetchone()
+        if _uses_postgres():
+            row = conn.execute(
+                "SELECT inspection_status FROM packing_inspections WHERE id = ? FOR UPDATE",
+                (inspection_id,),
+            ).fetchone()
+        else:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT inspection_status FROM packing_inspections WHERE id = ?",
+                (inspection_id,),
+            ).fetchone()
         if row is None:
             raise ValueError(f"Inspection not found: {inspection_id}")
         if row["inspection_status"] != "PENDING_HUMAN_REVIEW":
@@ -1089,13 +1095,18 @@ def record_inspection_review(
                 "This inspection has already been reviewed. Submit a new inspection after corrections."
             )
 
+        next_position = conn.execute(
+            "SELECT COALESCE(MAX(review_position), -1) + 1 AS next_position "
+            "FROM inspection_reviews WHERE inspection_id = ?",
+            (inspection_id,),
+        ).fetchone()["next_position"]
         conn.execute(
             """
             INSERT INTO inspection_reviews
-                (id, inspection_id, decision, reviewer_label, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (id, inspection_id, decision, reviewer_label, notes, review_position, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (review_id, inspection_id, decision, reviewer_label, notes, now),
+            (review_id, inspection_id, decision, reviewer_label, notes, next_position, now),
         )
         cursor = conn.execute(
             """
@@ -1331,7 +1342,7 @@ def create_shipment_for_order(
                     )
                 row = conn.execute("SELECT * FROM shipments WHERE order_id = ?", (shipment_order_id,)).fetchone()
                 return _row_to_shipment(row) if row else None
-            except sqlite3.IntegrityError:
+            except (sqlite3.IntegrityError, psycopg.IntegrityError):
                 # Concurrent conflict: another worker inserted first.
                 # Retrieve and validate linkage using this connection.
                 existing = conn.execute(
@@ -1345,7 +1356,7 @@ def create_shipment_for_order(
                         )
                     return _row_to_shipment(existing)
                 raise
-        except sqlite3.OperationalError as op_err:
+        except (sqlite3.OperationalError, psycopg.OperationalError) as op_err:
             # On locked OperationalError, roll back, close the failed connection, and retry with a fresh one.
             try:
                 conn.rollback()
