@@ -1,100 +1,93 @@
 # ParcelProof AI — Release Gate
 
-Use this checklist against the deployed judge environment. A green unit-test suite alone is not enough: the PayPal and AI flows must be demonstrated end to end.
+This checklist reflects the deployed judge environment as of 6 November 2026. A green CI run is not proof that external AI, carrier or payment-write flows work end to end.
 
 ## A. Build and repository
 
 - [x] Public repository opens without authentication.
-- [x] Repository contains source, `README.md`, merchant manual, `.env.example`, tests and MIT licence.
-- [ ] No `.env`, API keys, database files, buyer data, uploaded photos, `node_modules`, build output or local virtual environment is committed.
-- [x] GitHub Actions backend suite passes (239 discovered: 236 pass in SQLite job, 3 PostgreSQL-only tests run separately).
-- [x] Three PostgreSQL 17 persistence and concurrency integration tests pass.
-- [x] GitHub Actions frontend tests pass.
-- [x] GitHub Actions lint and production build pass.
-- [x] Docker image builds with the SQL migrations included in the runtime image.
+- [x] Source, README, merchant manual, `.env.example`, tests and MIT licence are present.
+- [ ] Complete a final secret/data audit of the public repository and all history.
+- [x] Latest GitHub Actions workflow passes on `main`: [run 42236129396](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42236129396).
+- [x] Backend unit tests: 232 passed; 3 PostgreSQL-only tests run in the separate PostgreSQL job.
+- [x] Three PostgreSQL 17 integration tests pass.
+- [x] Frontend tests, Oxlint and Vite production build pass.
+- [x] Docker deployment image builds with the migrations included.
 
-Latest green run: [GitHub Actions run 42194859971](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42194859971).
+## B. Hosted demo and persistence
 
-## B. Hosted demo and access
+- [x] Existing Render service is live on the Free plan: https://parcelproof-ai-058h.onrender.com
+- [x] Current deployed commit is `c4d244508e5ce97ddcfdef43a6659486be410111`; deployment `dep-dbmuecgn74is73bhdn50` is LIVE.
+- [x] Render application health checks return HTTP 200 at `/health`.
+- [x] Hosted checkout data was persisted through the Render service into the connected Supabase PostgreSQL database.
+- [x] Supabase project is ACTIVE_HEALTHY; PostgreSQL 17 and all nine application tables exist.
+- [x] Private `inspection-photos` bucket exists with 10 MB limit and JPEG, PNG and WebP restrictions.
+- [ ] Verify shared judge login and wrong-password rejection in the deployed app.
+- [ ] Verify hosted photo upload, read-back and retrieval after page reload using Supabase Storage.
+- [ ] Verify stored inspection/photo evidence survives an actual Render restart/redeploy.
+- [ ] Confirm the current judge access instructions and Sandbox buyer-account requirements are present in Devpost's private access fields.
 
-- [x] Five Supabase application migrations are applied; all nine app tables exist.
-- [x] Explicit item/photo/review ordering columns are present in Supabase.
-- [x] Row Level Security is enabled on all nine app tables; direct browser-role access remains denied.
-- [x] RLS auto-enable helper function execution is revoked from public API roles.
-- [x] Private `inspection-photos` bucket exists with 10 MB object limit and JPEG, PNG and WebP restrictions.
-- [x] Render Blueprint uses the Free plan and does not attach a paid disk.
-- [ ] Required `DATABASE_URL`, Supabase API key and Storage service JWT are entered in the actual Render service's private Environment settings.
-- [ ] The deployed container applies/recognizes its migrations and connects to the actual Supabase database.
-- [ ] Hosted URL loads over HTTPS.
-- [ ] `/health` returns `{"status":"ok"}` without requiring demo login.
-- [ ] Shared judge username/password work and incorrect credentials are rejected.
-- [ ] A real inspection photo can be uploaded, read by the AI provider, retrieved after reload and cleaned up through private Supabase Storage.
-- [ ] Database and uploaded evidence survive a service restart/redeploy.
-- [ ] No paid plan or external account is required from judges to use the hosted demo.
-- [ ] Demo credentials and required Sandbox account instructions are included in the private judge instructions / submission access fields, not committed to source.
+Live Supabase snapshot: 1 order, 1 shipment, 1 finalized manifest, 0 packing inspections, 0 inspection photos and 0 inspection reviews.
 
 ## C. PayPal Sandbox checkout
 
-- [ ] PayPal status shows whether the Sandbox credentials are configured.
-- [ ] A buyer can select catalogue items and quantities.
-- [ ] Recipient and delivery details are validated before checkout.
-- [ ] PayPal approval redirects back to the app.
-- [ ] Backend verifies capture status, amount, currency and order linkage.
-- [ ] Successful capture creates exactly one persistent shipment.
-- [ ] Repeated capture/retry does not create duplicate shipments.
-- [ ] Cancelled, failed or unverified payment does not create a shipment.
+- [x] Hosted PayPal OAuth check succeeds and reports the tracking write gate as locked.
+- [x] One buyer-approved Sandbox checkout completed and the backend verified/captured payment.
+- [x] The PAID order, amount, currency, item line, PayPal capture linkage and shipment persisted in Supabase.
+- [x] Shipment creation and duplicate-retry safety have automated unit/integration coverage.
+- [ ] Re-run buyer approval/capture once in the final deployed demo recording environment.
+- [ ] Re-verify cancel, failed and unverified payment paths in the hosted environment.
 
-## D. Manifest and packing evidence
+Do not use a live PayPal account or imply that Sandbox verification means production readiness.
 
-- [ ] Shipment manifest is derived from the paid order's exact item lines and quantities.
-- [ ] Merchant can review/edit the draft before finalization.
-- [ ] Finalization generates a manifest fingerprint and locks the manifest.
-- [ ] Inspection is blocked when no finalized manifest exists.
-- [ ] Up to five packing photos can be uploaded and retrieved after reload.
-- [ ] Inspection stores the manifest fingerprint and photo hashes.
-- [ ] Gemini Vision returns structured observations, or a clear recoverable error is shown.
-- [ ] Temporary Gemini failure follows the bounded retry/fallback path when configured.
-- [ ] All uploaded photos are preserved for the optional OpenAI fallback.
-- [ ] AI never makes the human approval/rejection decision.
+## D. Order-derived manifest and packing evidence
+
+- [x] The verified paid order produced a shipment and an order-derived manifest.
+- [x] The manifest was finalized and its fingerprint persisted.
+- [x] Inspection is blocked unless a finalized manifest exists (automated test coverage).
+- [x] AI provider failure now preserves uploaded photo evidence and persists a non-approvable `AI_FAILED` record when the database write succeeds (automated regression coverage).
+- [ ] Complete one successful hosted photo upload and AI inspection using real packing photos of the exact item in the manifest.
+- [ ] Verify the hosted AI result stores photo hashes and the manifest fingerprint.
+- [ ] Verify a hosted AI provider outage leaves the photo in private Supabase Storage and creates a retrievable `AI_FAILED` attempt.
+- [ ] Verify retrying an AI_FAILED attempt with the same browser-selected files creates a new attempt without deleting the original evidence.
+- [ ] Verify the latest inspection and original photographs can be reloaded after a page refresh.
+
+The configured `gemini-3.8-flash` model identifier is valid, but a successful hosted Gemini image analysis is not yet verified. `OPENAI_API_KEY` is optional and not configured in the current service.
 
 ## E. Human review and evidence history
 
-- [ ] Latest inspection is clearly identified.
-- [ ] Reviewer can inspect original photos and model observations.
-- [ ] Approve requires a reviewer label.
-- [ ] Request-correction and reject require an explanation.
-- [ ] Human decision is persisted separately from AI output.
-- [ ] Older inspections cannot be reviewed after a newer inspection exists.
-- [ ] A new inspection can be submitted after corrections.
-- [ ] Inspection details and photos can be retrieved after page reload and service restart.
+- [x] Backend tests cover separate persisted human decisions and enforce latest-inspection checks.
+- [x] An `AI_FAILED` inspection is not approvable and cannot satisfy the tracking gate.
+- [ ] Complete a live hosted review with reviewer label and notes.
+- [ ] Verify approve, request-correction and reject outcomes in the deployed UI.
+- [ ] Verify the human decision is persisted separately from model observations and is retrievable after reload.
+- [ ] Verify a corrected packing attempt creates a new inspection and the older inspection cannot be re-reviewed.
 
-## F. PayPal tracking safety
+A reviewer label is not an authenticated individual identity; the current demo uses shared authentication rather than merchant-level role accounts.
 
-- [ ] `PAYPAL_TRACKING_SUBMISSION_ENABLED=false` in the deployed judge environment.
-- [ ] UI clearly explains that tracking writes are locked.
-- [ ] Unpaid/sample shipments cannot submit tracking.
-- [ ] Unfinalized manifests cannot submit tracking.
-- [ ] A shipment without latest human approval cannot submit tracking.
-- [ ] No live PayPal transaction or live tracking write is used in the demo.
+## F. Shipment events and PayPal tracking safety
 
-Only if an explicitly approved Sandbox write test is planned:
+- [x] Old “Seller Protection eligible / ready” heuristic claims and the hard-coded USD 750 signature rule were removed from the analyzer/UI.
+- [x] The UI distinguishes merchant-entered shipment data from independently carrier-verified events.
+- [ ] Integrate at least one real carrier tracking/event source and preserve event source, timestamp, status and raw/normalized reference.
+- [ ] Verify carrier delivery event and destination matching using an actual carrier response, not merchant-entered notes.
+- [x] `PAYPAL_TRACKING_SUBMISSION_ENABLED=false` remains the intended hosted setting; ordinary demo flow keeps writes locked.
+- [x] Backend test coverage requires verified payment, finalized manifest and latest human approval before a tracking write.
+- [ ] Verify the actual current Render environment value without exposing secrets.
+- [ ] Perform a PayPal Sandbox tracking write only if explicitly authorized for a named test order/capture and test tracking number.
 
-- [ ] Confirm the exact Sandbox order ID and capture ID.
-- [ ] Confirm carrier and tracking number are test values.
-- [ ] Obtain approval before temporarily enabling the write gate.
-- [ ] Submit once and record the PayPal Sandbox response.
-- [ ] Restore the write gate to `false` immediately after the test.
+Do not enable tracking writes or use a live transaction for an ordinary demo. PayPal makes the final Seller Protection determination; ParcelProof must not claim otherwise.
 
 ## G. Presentation and submission
 
-- [ ] Product description states the customer, problem, workflow and limitations.
-- [ ] User manual is linked from the README.
-- [ ] YouTube demo is public/unlisted as permitted by the event and under three minutes.
-- [ ] Video shows the real running product, not only slides or mockups.
-- [ ] Demo covers PayPal Sandbox payment → shipment → finalized manifest → photos/AI → human review → evidence retrieval.
-- [ ] Devpost includes hosted demo URL, public repository, video and judge access instructions.
-- [ ] No claim says the product guarantees Seller Protection or replaces carrier delivery proof.
+- [x] README and merchant manual explain the current prototype and its limitations.
+- [x] Demo script is under three minutes.
+- [ ] Record a real end-to-end demo showing only flows that actually complete.
+- [ ] Include the real Sandbox checkout, finalized manifest and AI/human-review result only after the hosted flow is verified.
+- [ ] Show the locked PayPal tracking write gate and explain why it remains locked.
+- [ ] Upload the demo video to YouTube as allowed by the event rules.
+- [ ] Verify Devpost project title, description, public repository URL, demo URL, video and judge access instructions.
+- [ ] Confirm no unsupported claim says ParcelProof guarantees Seller Protection, verifies carrier delivery without a carrier feed, or replaces PayPal's decision.
 
 ## Release decision
 
-Do not call the project release-ready until sections B–G have been checked against the actual deployed version. Record any unchecked item as a known limitation rather than implying it passed.
+**Not release-ready yet.** The code is green in CI and the latest commit is live. One real PayPal Sandbox payment and an order-derived finalized manifest are verified. The live AI photo-inspection and human-review workflow has not been demonstrated successfully in the hosted environment; carrier event integration, final demo recording and Devpost submission checks are also open.
