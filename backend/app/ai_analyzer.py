@@ -21,29 +21,6 @@ EXCEPTION_KEYWORDS = [
     "package lost",
 ]
 
-SIGNATURE_KEYWORDS = [
-    "signed by",
-    "signature received",
-    "signature on file",
-    "adult signature",
-    "direct signature",
-    "customer signature",
-    "signature confirmed",
-]
-
-NO_SIGNATURE_KEYWORDS = [
-    "without signature",
-    "no signature",
-    "no signature requested",
-    "signature waived",
-    "waived signature",
-    "left at front door",
-    "left at doorstep",
-    "left at front doorstep",
-    "left on porch",
-]
-
-
 def _detect_probable_carrier(tracking_number: str) -> Optional[str]:
     cleaned = tracking_number.strip().replace(" ", "").replace("-", "")
     for carrier, pattern in CARRIER_PATTERNS.items():
@@ -54,9 +31,10 @@ def _detect_probable_carrier(tracking_number: str) -> Optional[str]:
 
 def analyze_shipment_evidence(order: Dict[str, Any]) -> Dict[str, Any]:
     """
-    AI-assisted shipment-evidence and PayPal Seller Protection readiness analyzer.
-    Analyzes shipment milestones, tracking consistency, delivery proofs,
-    high-value signature compliance, and generates PayPal Add Tracking preview payloads.
+    Deterministic shipment-record completeness checks for merchant operations.
+
+    This is not a Seller Protection eligibility calculator. Merchant-entered
+    shipment fields and notes are not treated as independent carrier evidence.
     """
     order_id = str(order.get("order_id", "UNKNOWN")).strip()
     transaction_id = str(order.get("transaction_id", "")).strip()
@@ -66,36 +44,12 @@ def analyze_shipment_evidence(order: Dict[str, Any]) -> Dict[str, Any]:
     status = str(order.get("status", "")).strip().upper()
     shipped_date = str(order.get("shipped_date", "") or "").strip()
     delivered_date = str(order.get("delivered_date", "") or "").strip()
-    transaction_date = str(order.get("transaction_date", "") or "").strip()
     shipping_address = str(order.get("shipping_address", "") or "").strip()
     evidence_text = str(order.get("evidence_text", "") or "").strip()
 
-    # Numerical order amount assessment for PayPal Seller Protection threshold
-    raw_amount = order.get("amount", 0.0)
-    try:
-        amount = float(raw_amount)
-    except (ValueError, TypeError):
-        amount = 0.0
-    currency = str(order.get("currency", "USD")).strip().upper() or "USD"
-
-    # PayPal $750 signature policy effective date (August 2, 2023 per public PayPal UA4.0 changelog).
-    # A transaction processed on or after this date is subject to the $750+ signature requirement.
-    POLICY_EFFECTIVE_DATE = date(2023, 8, 2)
-
-    # Determine policy applicability from the explicit transaction_date field only.
-    # Do NOT use shipped_date or delivered_date as a proxy.
-    parsed_transaction_date = None
-    if transaction_date:
-        try:
-            parsed_transaction_date = date.fromisoformat(transaction_date)
-            if parsed_transaction_date >= POLICY_EFFECTIVE_DATE:
-                policy_applicability = "CONFIRMED"
-            else:
-                policy_applicability = "PRE_POLICY"
-        except ValueError:
-            policy_applicability = "REQUIRES_REVIEW"
-    else:
-        policy_applicability = "REQUIRES_REVIEW"
+    # Evidence checks are deliberately independent of Seller Protection eligibility.
+    # PayPal applies country-, account-, transaction- and claim-specific rules.
+    evidence_lower = evidence_text.lower()
 
     strengths: List[str] = []
     risk_factors: List[str] = []
@@ -144,83 +98,9 @@ def analyze_shipment_evidence(order: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 strengths.append(f"Custom carrier documented: {carrier_other}")
 
-    # 3. PayPal Seller Protection High-Value ($750+) Signature Check
-    high_value_threshold = 750.0
-    is_high_value = amount >= high_value_threshold
-    signature_explicit = bool(order.get("signature_obtained", False))
-    evidence_lower = evidence_text.lower()
-    has_sig_proof = any(kw in evidence_lower for kw in SIGNATURE_KEYWORDS)
-    has_no_sig_keyword = any(kw in evidence_lower for kw in NO_SIGNATURE_KEYWORDS)
-
-    if has_no_sig_keyword and not has_sig_proof:
-        carrier_signature_state = "EXPLICITLY_MISSING"
-    elif has_sig_proof and not has_no_sig_keyword:
-        carrier_signature_state = "CARRIER_VERIFIED"
-    elif has_sig_proof and has_no_sig_keyword:
-        carrier_signature_state = "AMBIGUOUS"
-    else:
-        carrier_signature_state = "NOT_IN_CARRIER_LOG"
-
-    if is_high_value:
-        # Note policy applicability in risk factors when transaction date is unknown
-        if policy_applicability == "REQUIRES_REVIEW":
-            risk_factors.append(
-                f"Transaction processing date is unavailable. PayPal $750+ signature confirmation "
-                f"policy applicability (effective {POLICY_EFFECTIVE_DATE.isoformat()}) cannot be "
-                f"confirmed without the actual transaction date."
-            )
-            recommendations.append(
-                "Record the PayPal transaction processing date (transaction_date) to confirm "
-                "whether the $750+ signature confirmation requirement applies to this order."
-            )
-
-        if carrier_signature_state == "CARRIER_VERIFIED":
-            signature_satisfied = True
-            signature_status = "SATISFIED"
-            strengths.append(
-                f"High-value order ({currency} {amount:.2f} >= {high_value_threshold:.2f}): Verifiable carrier delivery record confirms recipient signature."
-            )
-        elif carrier_signature_state == "EXPLICITLY_MISSING":
-            signature_satisfied = False
-            signature_status = "MISSING_REQUIRED"
-            score -= 25
-            risk_factors.append(
-                f"High-value order ({currency} {amount:.2f} >= {high_value_threshold:.2f}): Carrier delivery log explicitly records package was left without signature. Ineligible for Item Not Received protection under PayPal policy."
-            )
-            recommendations.append(
-                f"Obtain official carrier proof-of-delivery documenting recipient signature confirmation from {carrier or 'the carrier'} before submitting evidence."
-            )
-        elif signature_explicit and carrier_signature_state == "NOT_IN_CARRIER_LOG":
-            signature_satisfied = False
-            signature_status = "MERCHANT_ATTESTED_UNVERIFIED"
-            score -= 15
-            risk_factors.append(
-                f"High-value order ({currency} {amount:.2f} >= {high_value_threshold:.2f}): Merchant indicates signature on file, but carrier tracking scan has not confirmed signature."
-            )
-            recommendations.append(
-                f"Attach official carrier electronic proof of delivery (ePOD) with signature confirmation from {carrier or 'the carrier'}."
-            )
-        else:
-            signature_satisfied = False
-            signature_status = "MISSING_REQUIRED"
-            score -= 25
-            risk_factors.append(
-                f"High-value order ({currency} {amount:.2f} >= {high_value_threshold:.2f}): PayPal requires verifiable proof of signature confirmation for Item Not Received disputes."
-            )
-            recommendations.append(
-                f"Request signature confirmation documentation from {carrier or 'the carrier'} before submitting to PayPal."
-            )
-    else:
-        if carrier_signature_state == "CARRIER_VERIFIED" or signature_explicit:
-            signature_satisfied = True
-            signature_status = "SATISFIED"
-            if amount > 0:
-                strengths.append(f"Standard value transaction ({currency} {amount:.2f}); signature confirmation documented.")
-        else:
-            signature_satisfied = False
-            signature_status = "NOT_REQUIRED"
-            if amount > 0:
-                strengths.append(f"Standard value transaction ({currency} {amount:.2f}); signature confirmation is optional.")
+    # 3. No signature threshold or protection eligibility inference.
+    # Signature requirements depend on PayPal's current country, transaction,
+    # account and claim rules; this heuristic does not assess them.
 
     # 4. Dates & Chronology Consistency
     parsed_shipped = None
@@ -262,53 +142,50 @@ def analyze_shipment_evidence(order: Dict[str, Any]) -> Dict[str, Any]:
         risk_factors.append("Status is marked DELIVERED but no delivery date is recorded.")
         recommendations.append("Include the delivery date from carrier tracking to substantiate delivery proof.")
 
-    # 5. Evidence Text & Carrier Exception Analysis
+    # 5. Merchant-entered evidence notes and destination text matching
+    destination_tokens_matched: List[str] = []
     if evidence_text:
         for kw in EXCEPTION_KEYWORDS:
             if kw in evidence_lower:
                 exceptions_detected.append(kw)
                 score -= 25
-                risk_factors.append(f"Carrier scan alert: '{kw}' found in tracking log.")
-                recommendations.append("Investigate delivery failure or carrier exception with the logistics provider.")
+                risk_factors.append(
+                    f"Shipment notes contain the phrase '{kw}'. Confirm it against the carrier's official tracking record."
+                )
+                recommendations.append("Check the carrier's official tracking page and resolve any confirmed exception.")
 
         # Address verification against shipping address
         if shipping_address:
             # Extract postal code or city tokens
             addr_tokens = [t.strip().lower() for t in re.split(r"[, ]+", shipping_address) if len(t.strip()) >= 3]
-            matched_tokens = [t for t in addr_tokens if t in evidence_lower]
-            if matched_tokens:
-                strengths.append(f"Carrier scan destination matches shipping address ({', '.join(set(matched_tokens[:2]))}).")
+            destination_tokens_matched = [t for t in addr_tokens if t in evidence_lower]
+            if destination_tokens_matched:
+                strengths.append(
+                    "Shipment notes mention destination text "
+                    f"({', '.join(dict.fromkeys(destination_tokens_matched[:2]))}); this is not carrier verification."
+                )
             else:
-                recommendations.append("Ensure carrier tracking log explicitly confirms delivery to the buyer's destination city/zip.")
+                recommendations.append("Compare the recipient destination against an online-verifiable carrier record.")
         else:
             recommendations.append("Record buyer's destination shipping address to ensure matching with PayPal transaction details.")
     else:
-        recommendations.append("Attach carrier tracking milestones or delivery log notes to strengthen evidence defense.")
+        recommendations.append("Attach carrier-issued tracking milestones and proof of shipment or delivery when available.")
 
-    # Calculate final score and protection tier
+    # Calculate an operational evidence-completeness indicator, not protection readiness.
     final_score = max(0, min(100, score))
 
     if final_score >= 85:
-        tier = "FULL_PROTECTION_READY"
-        readiness_label = "High Readiness - Strong Evidence"
+        tier = "RECORD_COMPLETE"
+        evidence_label = "Shipment record looks complete for review"
     elif final_score >= 70:
-        tier = "CONDITIONAL_PROTECTION"
-        readiness_label = "Moderate Readiness - Minor Review Needed"
+        tier = "RECORD_NEEDS_REVIEW"
+        evidence_label = "Shipment record needs a closer review"
     elif final_score >= 45:
-        tier = "EVIDENCE_INCOMPLETE"
-        readiness_label = "Low Readiness - Key Evidence Missing"
+        tier = "EVIDENCE_GAPS"
+        evidence_label = "Important shipment information is missing"
     else:
-        tier = "CRITICAL_DEFECT"
-        readiness_label = "Blocked - Incompatible for Submission"
-
-    # Seller Protection Eligibility Matrix
-    inr_eligible = (
-        final_score >= 70
-        and bool(tracking_number)
-        and (not is_high_value or signature_satisfied)
-        and status in ("SHIPPED", "DELIVERED")
-    )
-    unauthorized_eligible = final_score >= 70 and bool(tracking_number) and bool(shipped_date)
+        tier = "MAJOR_EVIDENCE_GAPS"
+        evidence_label = "Shipment record has major gaps"
 
     # PayPal Orders v2 Add Tracking preview.
     paypal_tracking_request_body: Dict[str, Any] = {
@@ -332,25 +209,25 @@ def analyze_shipment_evidence(order: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "order_id": order_id,
-        "readiness_score": final_score,
-        "protection_tier": tier,
-        "readiness_label": readiness_label,
-        "seller_protection": {
-            "item_not_received_eligible": inr_eligible,
-            "unauthorized_transaction_eligible": unauthorized_eligible,
-            "signature_confirmation": {
-                "required": is_high_value,
-                "threshold": high_value_threshold,
-                "order_amount": amount,
-                "currency": currency,
-                "detected": signature_satisfied,
-                "status": signature_status,
-                "verification_source": "CARRIER_SCAN" if carrier_signature_state == "CARRIER_VERIFIED" else ("MERCHANT_ATTESTATION" if signature_explicit else "NONE"),
-                "policy_applicability": policy_applicability,
-                "policy_effective_date": POLICY_EFFECTIVE_DATE.isoformat(),
-            },
-            "disclaimer": "Preliminary evidence assessment only. Official Seller Protection eligibility is determined exclusively by PayPal during dispute adjudication.",
+        "evidence_score": final_score,
+        "evidence_tier": tier,
+        "evidence_label": evidence_label,
+        "evidence_checks": {
+            "tracking_number_recorded": bool(tracking_number),
+            "carrier_recorded": bool(carrier and (carrier != "OTHER" or carrier_other)),
+            "shipment_date_recorded": bool(shipped_date),
+            "delivered_status_and_date_recorded": status == "DELIVERED" and bool(delivered_date),
+            "destination_text_match": bool(destination_tokens_matched),
+            "exception_phrases_found": exceptions_detected,
+            "source_notice": (
+                "Shipment fields and notes are merchant-entered in this prototype. "
+                "No carrier event feed is connected, so these checks do not verify shipment or delivery."
+            ),
         },
+        "paypal_notice": (
+            "This score does not assess PayPal Seller Protection eligibility. PayPal applies the "
+            "requirements for the seller's country, account, transaction and claim, and makes the final decision."
+        ),
         # Carriers not in CARRIER_PATTERNS (e.g. OTHER) have no automatic
         # tracking-number format validation pattern. format_valid is None
         # (unsupported), never an incorrect PASS or FAIL.
@@ -363,15 +240,14 @@ def analyze_shipment_evidence(order: Dict[str, Any]) -> Dict[str, Any]:
         },
         "evidence_summary": {
             "exceptions_detected": exceptions_detected,
-            "signature_detected": signature_satisfied,
             "evidence_provided": bool(evidence_text),
         },
         "engine_metadata": {
             "type": "DETERMINISTIC_RULES_NLP",
-            "name": "Deterministic Policy & NLP Heuristics Engine",
+            "name": "Deterministic Shipment Data Checks",
             "auditable": True,
             "zero_hallucination": True,
-            "description": "Deterministic rule-based expert system with NLP pattern extraction. Evaluates carrier tracking patterns, milestone chronology, and PayPal Seller Protection criteria without external LLM hallucinations.",
+            "description": "Rule-based checks for entered tracking details, dates, note keywords and address-text overlap. Does not verify carrier events or determine PayPal eligibility.",
         },
         "strengths": strengths,
         "risk_factors": risk_factors,
