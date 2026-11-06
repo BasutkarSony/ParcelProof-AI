@@ -173,6 +173,46 @@ PayPal OAuth was verified in Sandbox and the tracking write gate displayed as lo
 
 The deterministic shipment analyzer reports shipment-record completeness only. It does not calculate Seller Protection eligibility. PayPal makes its own decision under the requirements applicable to the seller, country, account, transaction and claim.
 
+## Transaction-to-document reconciliation
+
+The first reconciliation API accepts normalized document fields and compares them against the paid PayPal order and finalized shipment manifest:
+
+`POST /api/shipments/{shipment_order_id}/reconcile`
+
+Example request body:
+
+```json
+{
+  "document": {
+    "document_type": "COMMERCIAL_INVOICE",
+    "document_number": "INV-1001",
+    "currency": "USD",
+    "total_amount": "25.00",
+    "recipient_name": "Alex Buyer",
+    "recipient_address": {
+      "address_line_1": "123 River Road",
+      "city": "Berlin",
+      "postal_code": "10115",
+      "country_code": "DE"
+    },
+    "items": [
+      {
+        "sku": "SKU-1",
+        "description": "Handmade Ceramic Cup",
+        "quantity": 2,
+        "unit_amount": "12.50"
+      }
+    ]
+  }
+}
+```
+
+The engine checks currency, invoice total, recipient details, item identity and quantities, and the source links between manifest lines and the exact PayPal order items. It returns source-referenced checks with `MATCH`, `MISMATCH`, `NOT_CHECKED` or `NOT_APPLICABLE` statuses. A missing value is never counted as a match. Invoice-total differences require review because freight, tax, duties or discounts can make unlike totals differ.
+
+This endpoint currently accepts **normalized structured fields**. PDF/image upload, extraction, persistence of reconciliation runs and the merchant-facing reconciliation screen are subsequent implementation stages; the endpoint does not claim to extract documents yet.
+
+The result is an operational consistency check, not customs clearance, carrier proof, export-compliance advice or PayPal Seller Protection eligibility.
+
 ## Testing
 
 Backend tests:
