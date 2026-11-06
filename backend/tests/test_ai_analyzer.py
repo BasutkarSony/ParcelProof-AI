@@ -1,7 +1,5 @@
-import os
 import sys
 import unittest
-from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -9,9 +7,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.ai_analyzer import analyze_shipment_evidence
 
 
-class AIAnalyzerTests(unittest.TestCase):
-    def test_standard_valid_shipment_analysis(self):
-        order = {
+class ShipmentEvidenceAnalyzerTests(unittest.TestCase):
+    def test_complete_record_returns_neutral_evidence_label(self):
+        result = analyze_shipment_evidence({
             "order_id": "ORD-1001",
             "transaction_id": "8MC585209K746392H",
             "tracking_number": "781234567890",
@@ -19,298 +17,139 @@ class AIAnalyzerTests(unittest.TestCase):
             "status": "DELIVERED",
             "shipped_date": "2026-10-25",
             "delivered_date": "2026-10-28",
-            "amount": 120.00,
-            "currency": "USD",
             "shipping_address": "Seattle, WA 98101",
-            "evidence_text": "Carrier scan: Delivered at front porch in Seattle, WA 98101.",
-        }
-        result = analyze_shipment_evidence(order)
-        self.assertGreaterEqual(result["readiness_score"], 85)
-        self.assertEqual(result["protection_tier"], "FULL_PROTECTION_READY")
-        self.assertTrue(result["seller_protection"]["item_not_received_eligible"])
-        self.assertFalse(result["seller_protection"]["signature_confirmation"]["required"])
-        self.assertEqual(result["seller_protection"]["signature_confirmation"]["status"], "NOT_REQUIRED")
+            "evidence_text": "Delivered at Seattle, WA 98101.",
+        })
 
-    def test_high_value_order_missing_signature_is_flagged(self):
-        order = {
+        self.assertGreaterEqual(result["evidence_score"], 85)
+        self.assertEqual(result["evidence_tier"], "RECORD_COMPLETE")
+        self.assertEqual(result["evidence_label"], "Shipment record looks complete for review")
+        self.assertNotIn("seller_protection", result)
+        self.assertIn("does not assess PayPal Seller Protection eligibility", result["paypal_notice"])
+
+    def test_high_value_and_signature_text_do_not_trigger_outdated_policy(self):
+        result = analyze_shipment_evidence({
             "order_id": "ORD-HIGH-VAL",
-            "transaction_id": "8MC585209K746392H",
+            "transaction_id": "TXN-100",
             "tracking_number": "1Z9999999999999999",
             "carrier": "UPS",
             "status": "DELIVERED",
             "shipped_date": "2026-10-25",
             "delivered_date": "2026-10-28",
-            "amount": 950.00,
+            "amount": 980.00,
             "currency": "USD",
-            "evidence_text": "Delivered to front door.",
-        }
-        result = analyze_shipment_evidence(order)
-        self.assertTrue(result["seller_protection"]["signature_confirmation"]["required"])
-        self.assertEqual(result["seller_protection"]["signature_confirmation"]["status"], "MISSING_REQUIRED")
-        self.assertIn("signature confirmation", " ".join(result["risk_factors"]).lower())
+            "evidence_text": "Delivered to front door without signature.",
+        })
 
-    def test_high_value_order_with_signature_is_satisfied(self):
-        order = {
-            "order_id": "ORD-HIGH-VAL-SIG",
-            "transaction_id": "8MC585209K746392H",
-            "tracking_number": "1Z9999999999999999",
-            "carrier": "UPS",
-            "status": "DELIVERED",
+        self.assertNotIn("signature_confirmation", result)
+        self.assertNotIn("signature_detected", result["evidence_summary"])
+        self.assertFalse(any("signature" in item.lower() for item in result["risk_factors"]))
+
+    def test_transaction_date_does_not_infer_paypal_policy(self):
+        base = {
+            "order_id": "ORD-DATE",
+            "transaction_id": "TXN-1",
+            "tracking_number": "781234567890",
+            "carrier": "FEDEX",
+            "status": "SHIPPED",
             "shipped_date": "2026-10-25",
-            "delivered_date": "2026-10-28",
-            "amount": 1200.00,
-            "currency": "USD",
-            "evidence_text": "Delivered and signed by: Michael Vance.",
         }
-        result = analyze_shipment_evidence(order)
-        self.assertTrue(result["seller_protection"]["signature_confirmation"]["required"])
-        self.assertEqual(result["seller_protection"]["signature_confirmation"]["status"], "SATISFIED")
-        self.assertTrue(result["evidence_summary"]["signature_detected"])
+        without_date = analyze_shipment_evidence(base)
+        with_date = analyze_shipment_evidence({**base, "transaction_date": "2026-10-24"})
 
-    def test_engine_metadata_accurately_labeled(self):
-        order = {"order_id": "ORD-1", "transaction_id": "TXN-1", "tracking_number": "1Z123"}
-        result = analyze_shipment_evidence(order)
-        self.assertIn("engine_metadata", result)
-        self.assertEqual(result["engine_metadata"]["type"], "DETERMINISTIC_RULES_NLP")
-        self.assertTrue(result["engine_metadata"]["auditable"])
-        self.assertTrue(result["engine_metadata"]["zero_hallucination"])
+        self.assertEqual(without_date["evidence_score"], with_date["evidence_score"])
+        self.assertNotIn("policy_applicability", with_date)
 
-    def test_carrier_format_mismatch_detected(self):
-        # Tracking number is a UPS 1Z format, but carrier is marked as USPS
-        order = {
+    def test_carrier_format_mismatch_is_flagged(self):
+        result = analyze_shipment_evidence({
             "order_id": "ORD-MISMATCH",
-            "transaction_id": "8MC585209K746392H",
+            "transaction_id": "TXN-2",
             "tracking_number": "1Z9999999999999999",
             "carrier": "USPS",
             "status": "SHIPPED",
             "shipped_date": "2026-10-25",
-        }
-        result = analyze_shipment_evidence(order)
+        })
+
         self.assertEqual(result["carrier_analysis"]["probable_detected_carrier"], "UPS")
         self.assertIn("Format mismatch", " ".join(result["risk_factors"]))
 
-    def test_other_carrier_format_valid_is_null(self):
-        """OTHER carrier has no automatic format validation pattern -> format_valid is None."""
-        order = {
-            "order_id": "ORD-OTHER-001",
-            "transaction_id": "8MC585209K746392H",
+    def test_other_carrier_format_is_not_guessed(self):
+        result = analyze_shipment_evidence({
+            "order_id": "ORD-OTHER",
+            "transaction_id": "TXN-3",
             "tracking_number": "DEMO123456",
             "carrier": "OTHER",
             "carrier_name_other": "Demo Logistics",
             "status": "SHIPPED",
             "shipped_date": "2026-10-25",
-        }
-        result = analyze_shipment_evidence(order)
+        })
+
         self.assertEqual(result["carrier_analysis"]["carrier"], "OTHER")
         self.assertIsNone(result["carrier_analysis"]["format_valid"])
         self.assertIsNone(result["carrier_analysis"]["probable_detected_carrier"])
 
-    def test_other_carrier_with_no_tracking_number_format_valid_is_null(self):
-        """OTHER carrier with no tracking number -> format_valid is None."""
-        order = {
-            "order_id": "ORD-OTHER-002",
-            "transaction_id": "8MC585209K746392H",
-            "tracking_number": "",
-            "carrier": "OTHER",
-            "status": "SHIPPED",
-            "shipped_date": "2026-10-25",
-        }
-        result = analyze_shipment_evidence(order)
-        self.assertEqual(result["carrier_analysis"]["carrier"], "OTHER")
-        self.assertIsNone(result["carrier_analysis"]["format_valid"])
-
-    def test_carrier_exception_keywords_detected(self):
-        order = {
+    def test_exception_phrases_are_flagged_as_text_not_carrier_verified_events(self):
+        result = analyze_shipment_evidence({
             "order_id": "ORD-EXCEPTION",
-            "transaction_id": "8MC585209K746392H",
+            "transaction_id": "TXN-4",
             "tracking_number": "781234567890",
             "carrier": "FEDEX",
             "status": "SHIPPED",
             "shipped_date": "2026-10-25",
             "evidence_text": "Delivery failed: damaged in transit, returned to sender.",
-        }
-        result = analyze_shipment_evidence(order)
+        })
+
         self.assertIn("damaged in transit", result["evidence_summary"]["exceptions_detected"])
         self.assertIn("returned to sender", result["evidence_summary"]["exceptions_detected"])
-        self.assertLess(result["readiness_score"], 70)
+        self.assertTrue(result["evidence_checks"]["exception_phrases_found"])
+        self.assertIn("merchant-entered", result["evidence_checks"]["source_notice"].lower())
+        self.assertLess(result["evidence_score"], 70)
 
-    def test_paypal_payload_preview_format(self):
-        order = {
+    def test_destination_match_is_only_a_text_match(self):
+        result = analyze_shipment_evidence({
+            "order_id": "ORD-ADDRESS",
+            "transaction_id": "TXN-5",
+            "tracking_number": "781234567890",
+            "carrier": "FEDEX",
+            "status": "DELIVERED",
+            "shipped_date": "2026-10-25",
+            "delivered_date": "2026-10-28",
+            "shipping_address": "Seattle, WA 98101",
+            "evidence_text": "Delivery notes: Seattle, WA 98101.",
+        })
+
+        self.assertTrue(result["evidence_checks"]["destination_text_match"])
+        self.assertTrue(any("not carrier verification" in item.lower() for item in result["strengths"]))
+        self.assertIn("No carrier event feed is connected", result["evidence_checks"]["source_notice"])
+
+    def test_payload_preview_remains_locked_and_human_gated(self):
+        result = analyze_shipment_evidence({
             "order_id": "ORD-1001",
-            "transaction_id": "8MC585209K746392H",
+            "transaction_id": "CAPTURE-1001",
             "tracking_number": "781234567890",
             "carrier": "FEDEX",
             "status": "SHIPPED",
             "shipped_date": "2026-10-25",
-        }
-        result = analyze_shipment_evidence(order)
+        })
         preview = result["paypal_payload_preview"]
-        self.assertEqual(
-            preview["endpoint"],
-            "POST /v2/checkout/orders/{paypal_order_id}/track",
-        )
-        self.assertEqual(
-            preview["request_body"],
-            {
-                "capture_id": "8MC585209K746392H",
-                "tracking_number": "781234567890",
-                "carrier": "FEDEX",
-                "notify_payer": False,
-            },
-        )
-        self.assertEqual(
-            preview["submission_safety_status"], "DISABLED_BY_DEFAULT"
-        )
+
+        self.assertEqual(preview["endpoint"], "POST /v2/checkout/orders/{paypal_order_id}/track")
+        self.assertEqual(preview["request_body"], {
+            "capture_id": "CAPTURE-1001",
+            "tracking_number": "781234567890",
+            "carrier": "FEDEX",
+            "notify_payer": False,
+        })
+        self.assertEqual(preview["submission_safety_status"], "DISABLED_BY_DEFAULT")
         self.assertIn("human-approved", preview["safety_gate_note"])
 
-    def test_ord_1005_scenario_missing_signature_explicitly_flagged(self):
-        order = {
-            "order_id": "ORD-1005",
-            "transaction_id": "SANDBOX-TXN-1005",
-            "tracking_number": "781234567890",
-            "carrier": "FEDEX",
-            "status": "DELIVERED",
-            "shipped_date": "2026-10-25",
-            "delivered_date": "2026-10-28",
-            "amount": 980.00,
-            "currency": "USD",
-            "shipping_address": "Boston, MA 02108",
-            "evidence_text": "Delivered: Left at front doorstep without signature.",
-        }
-        result = analyze_shipment_evidence(order)
-        self.assertEqual(result["seller_protection"]["signature_confirmation"]["status"], "MISSING_REQUIRED")
-        self.assertFalse(result["seller_protection"]["item_not_received_eligible"])
-        self.assertIn("without signature", " ".join(result["risk_factors"]).lower())
+    def test_engine_metadata_describes_checks_without_policy_claims(self):
+        result = analyze_shipment_evidence({"order_id": "ORD-1", "transaction_id": "TXN-1"})
 
-    def test_ord_1005_scenario_merchant_checkbox_alone_does_not_override_negative_carrier_scan(self):
-        order = {
-            "order_id": "ORD-1005",
-            "transaction_id": "SANDBOX-TXN-1005",
-            "tracking_number": "781234567890",
-            "carrier": "FEDEX",
-            "status": "DELIVERED",
-            "shipped_date": "2026-10-25",
-            "delivered_date": "2026-10-28",
-            "amount": 980.00,
-            "currency": "USD",
-            "shipping_address": "Boston, MA 02108",
-            "evidence_text": "Delivered: Left at front doorstep without signature.",
-            "signature_obtained": True,  # Merchant claims signature, but carrier log contradicts it
-        }
-        result = analyze_shipment_evidence(order)
-        # Must not be SATISFIED because carrier delivery record explicitly states left without signature
-        self.assertEqual(result["seller_protection"]["signature_confirmation"]["status"], "MISSING_REQUIRED")
-        self.assertFalse(result["seller_protection"]["item_not_received_eligible"])
-
-    def test_ord_1005_scenario_remediated_with_carrier_signature_confirmation(self):
-        order = {
-            "order_id": "ORD-1005",
-            "transaction_id": "SANDBOX-TXN-1005",
-            "tracking_number": "781234567890",
-            "carrier": "FEDEX",
-            "status": "DELIVERED",
-            "shipped_date": "2026-10-25",
-            "delivered_date": "2026-10-28",
-            "amount": 980.00,
-            "currency": "USD",
-            "shipping_address": "Boston, MA 02108",
-            "evidence_text": "Delivered and signed by: C. Adams, Boston, MA 02108. FedEx Direct Signature confirmation on file.",
-            "signature_obtained": True,
-        }
-        result = analyze_shipment_evidence(order)
-        self.assertEqual(result["seller_protection"]["signature_confirmation"]["status"], "SATISFIED")
-        self.assertEqual(result["seller_protection"]["signature_confirmation"]["verification_source"], "CARRIER_SCAN")
-        self.assertTrue(result["seller_protection"]["item_not_received_eligible"])
-        self.assertGreaterEqual(result["readiness_score"], 85)
-        self.assertEqual(result["protection_tier"], "FULL_PROTECTION_READY")
-        # Verify PayPal preview uses the exact updated shipment data
-        preview_body = result["paypal_payload_preview"]["request_body"]
-        self.assertEqual(preview_body["capture_id"], "SANDBOX-TXN-1005")
-        self.assertEqual(preview_body["tracking_number"], "781234567890")
-        self.assertEqual(preview_body["carrier"], "FEDEX")
-        self.assertFalse(preview_body["notify_payer"])
-
-    def test_missing_transaction_date_shows_policy_requires_review(self):
-        """When transaction_date is absent, policy_applicability must be REQUIRES_REVIEW."""
-        order = {
-            "order_id": "ORD-1005",
-            "transaction_id": "SANDBOX-TXN-1005",
-            "tracking_number": "781234567890",
-            "carrier": "FEDEX",
-            "status": "DELIVERED",
-            "shipped_date": "2026-10-25",
-            "delivered_date": "2026-10-28",
-            "amount": 980.00,
-            "currency": "USD",
-            "shipping_address": "Boston, MA 02108",
-            "evidence_text": "Delivered: Left at front doorstep without signature.",
-            # transaction_date intentionally absent
-        }
-        result = analyze_shipment_evidence(order)
-        sig = result["seller_protection"]["signature_confirmation"]
-        self.assertEqual(sig["policy_applicability"], "REQUIRES_REVIEW")
-        # A warning about missing transaction date should appear
-        combined_risks = " ".join(result["risk_factors"]).lower()
-        self.assertIn("transaction processing date", combined_risks)
-
-    def test_transaction_date_after_policy_effective_date_is_confirmed(self):
-        """When transaction_date is on or after 2023-08-02, policy_applicability is CONFIRMED."""
-        order = {
-            "order_id": "ORD-POLICY-CONFIRMED",
-            "transaction_id": "8MC585209K746392H",
-            "tracking_number": "1Z9999999999999999",
-            "carrier": "UPS",
-            "status": "DELIVERED",
-            "shipped_date": "2026-10-24",
-            "delivered_date": "2026-10-27",
-            "transaction_date": "2026-10-23",
-            "amount": 1450.00,
-            "currency": "USD",
-            "shipping_address": "San Francisco, CA 94105",
-            "evidence_text": "Delivered and signed by: M. Vance. Front desk reception, San Francisco, CA 94105.",
-            "signature_obtained": True,
-        }
-        result = analyze_shipment_evidence(order)
-        sig = result["seller_protection"]["signature_confirmation"]
-        self.assertEqual(sig["policy_applicability"], "CONFIRMED")
-        self.assertEqual(sig["status"], "SATISFIED")
-
-    def test_merchant_attestation_alone_is_unverified_when_no_carrier_sig_scan(self):
-        """signature_obtained=True with no carrier confirmation keyword yields MERCHANT_ATTESTED_UNVERIFIED."""
-        order = {
-            "order_id": "ORD-ATTEST",
-            "transaction_id": "8MC585209K746392H",
-            "tracking_number": "781234567890",
-            "carrier": "FEDEX",
-            "status": "DELIVERED",
-            "shipped_date": "2026-10-25",
-            "delivered_date": "2026-10-28",
-            "transaction_date": "2026-10-24",
-            "amount": 980.00,
-            "currency": "USD",
-            "shipping_address": "Boston, MA 02108",
-            "evidence_text": "Package delivered.",
-            "signature_obtained": True,
-        }
-        result = analyze_shipment_evidence(order)
-        sig = result["seller_protection"]["signature_confirmation"]
-        self.assertEqual(sig["status"], "MERCHANT_ATTESTED_UNVERIFIED")
-        self.assertFalse(result["seller_protection"]["item_not_received_eligible"])
-
-    def test_policy_effective_date_present_in_signature_confirmation(self):
-        """policy_effective_date field is always returned in signature_confirmation."""
-        order = {
-            "order_id": "ORD-DATE-CHECK",
-            "transaction_id": "TXN-X",
-            "tracking_number": "781234567890",
-            "carrier": "FEDEX",
-            "status": "DELIVERED",
-            "amount": 900.00,
-        }
-        result = analyze_shipment_evidence(order)
-        sig = result["seller_protection"]["signature_confirmation"]
-        self.assertIn("policy_effective_date", sig)
-        self.assertEqual(sig["policy_effective_date"], "2023-08-02")
+        self.assertEqual(result["engine_metadata"]["type"], "DETERMINISTIC_RULES_NLP")
+        self.assertTrue(result["engine_metadata"]["auditable"])
+        self.assertTrue(result["engine_metadata"]["zero_hallucination"])
+        self.assertIn("does not verify carrier events", result["engine_metadata"]["description"])
 
 
 if __name__ == "__main__":
