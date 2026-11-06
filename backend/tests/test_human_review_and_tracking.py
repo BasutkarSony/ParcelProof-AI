@@ -99,7 +99,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as photo_dir:
             upload = UploadFile(
                 filename="packing-proof.jpg",
-                file=BytesIO(b"\\xff\\xd8\\xff" + b"test-image-data"),
+                file=BytesIO(b"\xff\xd8\xff" + b"test-image-data"),
             )
             with patch("app.packing_inspector.PHOTO_DIR", Path(photo_dir)):
                 with patch.dict(os.environ, {"SUPABASE_URL": ""}):
