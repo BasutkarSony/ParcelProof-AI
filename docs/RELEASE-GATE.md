@@ -5,22 +5,31 @@ Use this checklist against the deployed judge environment. A green unit-test sui
 ## A. Build and repository
 
 - [x] Public repository opens without authentication.
-- [ ] Repository contains source, `README.md`, this manual, `.env.example`, tests and an open-source licence.
+- [x] Repository contains source, `README.md`, merchant manual, `.env.example`, tests and MIT licence.
 - [ ] No `.env`, API keys, database files, buyer data, uploaded photos, `node_modules`, build output or local virtual environment is committed.
-- [x] GitHub Actions backend tests pass.
+- [x] GitHub Actions backend unit tests pass (237 tests; one PostgreSQL-only test is run separately).
+- [x] PostgreSQL 17 persistence integration test passes.
 - [x] GitHub Actions frontend tests pass.
 - [x] GitHub Actions lint and production build pass.
-- [x] Docker image builds successfully.
+- [x] Docker image builds with the SQL migrations included in the runtime image.
+
+Latest green run: [GitHub Actions run 42193452445](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42193452445).
 
 ## B. Hosted demo and access
 
+- [x] Supabase application schema migrations are applied; all nine app tables exist.
+- [x] Row Level Security is enabled on all nine app tables; direct browser-role access remains denied.
+- [x] Private `inspection-photos` bucket exists with the configured JPEG, PNG and WebP restrictions.
+- [x] Render Blueprint uses the Free plan and does not attach a paid disk.
+- [ ] Required `DATABASE_URL`, Supabase API key and Storage service JWT are entered in the actual Render service's private Environment settings.
+- [ ] The deployed container applies/recognizes its migrations and connects to the actual Supabase database.
 - [ ] Hosted URL loads over HTTPS.
-- [ ] Shared judge username/password work.
 - [ ] `/health` returns `{"status":"ok"}` without requiring demo login.
-- [ ] Incorrect credentials are rejected.
+- [ ] Shared judge username/password work and incorrect credentials are rejected.
+- [ ] A real inspection photo can be uploaded, read by the AI provider, retrieved after reload and cleaned up through private Supabase Storage.
 - [ ] Database and uploaded evidence survive a service restart/redeploy.
 - [ ] No paid plan or external account is required from judges to use the hosted demo.
-- [ ] Demo credentials and required Sandbox accounts are included in the private judge instructions / submission access fields, not committed to source.
+- [ ] Demo credentials and required Sandbox account instructions are included in the private judge instructions / submission access fields, not committed to source.
 
 ## C. PayPal Sandbox checkout
 
@@ -86,4 +95,4 @@ Only if an explicitly approved Sandbox write test is planned:
 
 ## Release decision
 
-Do not call the project release-ready until sections A–G have been checked against the actual deployed version. Record any unchecked item as a known limitation rather than implying it passed.
+Do not call the project release-ready until sections B–G have been checked against the actual deployed version. Record any unchecked item as a known limitation rather than implying it passed.
