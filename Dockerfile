@@ -18,6 +18,8 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
+COPY backend/migrations ./migrations
+RUN test -s ./migrations/001_initial_supabase.sql
 COPY backend/data/sample_orders.json ./data/sample_orders.json
 COPY --from=frontend-build /src/frontend/dist ./frontend_dist
 
