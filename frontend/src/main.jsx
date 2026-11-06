@@ -198,10 +198,10 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
       <div className="side-card">
         <div className="side-card-header">
           <span className="pulse" aria-hidden="true"></span>
-          <span>Policy Checks Active</span>
+          <span>Shipment Checks Active</span>
         </div>
         <div className="side-card-body">
-          Deterministic rules and text heuristics flag evidence gaps against selected PayPal Seller Protection guidance. PayPal makes its own eligibility decisions.
+          Basic rules flag missing or inconsistent shipment fields and note keywords. This prototype does not fetch carrier events or calculate PayPal eligibility.
         </div>
       </div>
 
@@ -773,7 +773,7 @@ export default function App() {
           onClick={() => setSelectedOrder(null)}
           role="dialog"
           aria-modal="true"
-          aria-label="Evidence and Protection Inspector"
+          aria-label="Shipment Evidence Inspector"
         >
           <div className="drawer-pane" onClick={e => e.stopPropagation()}>
             <div className="drawer-top">
@@ -1196,9 +1196,9 @@ function ShipmentReviewMain({
           <small>Blocked data or milestone defects</small>
         </div>
         <div className="stat-card">
-          <span>PROTECTION READY</span>
+          <span>RECORD COMPLETE</span>
           <strong className="green">{aiAnalysisRun ? evidenceCompleteCount.toString().padStart(2, '0') : 'Not evaluated'}</strong>
-          <small>Full Seller Protection defense viability</small>
+          <small>Fields present for merchant review; not carrier verification.</small>
         </div>
       </section>
 
@@ -1206,7 +1206,7 @@ function ShipmentReviewMain({
         <div className="queue-title">
           <div className="eyebrow">SHIPMENT QUEUE</div>
           <h2>Evidence Verification Queue</h2>
-          <p>Review individual shipments, inspect Seller Protection criteria, or remediate missing evidence.</p>
+          <p>Review shipment records, inspect AI observations, and decide the next fulfilment action.</p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
@@ -1401,7 +1401,7 @@ function ShipmentReviewMain({
 
                 {status === 'PASS' && (
                   <div className="pass-callout">
-                    ✓ Preliminary data-quality checks passed. Evidence ready for PayPal Seller Protection inspection.
+                    ✓ Shipment fields passed basic format checks. This does not verify dispatch or delivery.
                   </div>
                 )}
 
