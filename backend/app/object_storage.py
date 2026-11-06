@@ -20,22 +20,30 @@ class StorageOperationError(RuntimeError):
     """Raised when a private object operation fails."""
 
 
-def _configuration() -> tuple[str, str, str]:
+def _configuration() -> tuple[str, str, str, str]:
     base_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    secret = (
+    api_key = (
         os.getenv("SUPABASE_SECRET_KEY", "").strip()
         or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     )
+    service_jwt = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    if not service_jwt and api_key and not api_key.startswith("sb_secret_"):
+        # Legacy service_role keys are JWTs and can serve both purposes.
+        service_jwt = api_key
     bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "inspection-photos").strip()
-    if not base_url or not secret or not bucket:
+    if not base_url or not api_key or not bucket:
         raise StorageConfigurationError(
-            "Private photo storage is not configured. Set SUPABASE_URL and a backend-only Supabase secret key."
+            "Private photo storage is not configured. Set SUPABASE_URL and a backend-only Supabase key."
+        )
+    if api_key.startswith("sb_secret_") and not service_jwt:
+        raise StorageConfigurationError(
+            "Private Storage requires a legacy service_role JWT in SUPABASE_SERVICE_ROLE_KEY when using an sb_secret API key."
         )
     if not re.fullmatch(r"https://[A-Za-z0-9.-]+", base_url):
         raise StorageConfigurationError("SUPABASE_URL must be an HTTPS project URL.")
     if "/" in bucket or bucket in {".", ".."}:
         raise StorageConfigurationError("SUPABASE_STORAGE_BUCKET is invalid.")
-    return base_url, secret, bucket
+    return base_url, api_key, service_jwt, bucket
 
 
 def _object_url(base_url: str, bucket: str, object_path: str) -> str:
@@ -46,12 +54,13 @@ def _object_url(base_url: str, bucket: str, object_path: str) -> str:
     return f"{base_url}/storage/v1/object/{quote(bucket, safe='')}/{encoded_path}"
 
 
-def _headers(secret: str, content_type: str | None = None) -> dict[str, str]:
-    # New sb_secret_* keys are opaque API keys, not JWTs: send them only in
-    # apikey. Legacy service_role keys are JWTs and also need Bearer auth.
-    headers = {"apikey": secret}
-    if not secret.startswith("sb_secret_"):
-        headers["Authorization"] = f"Bearer {secret}"
+def _headers(api_key: str, service_jwt: str, content_type: str | None = None) -> dict[str, str]:
+    # sb_secret_* is an opaque API key, while Storage's service-level bypass
+    # requires the service_role JWT in Authorization.
+    headers = {
+        "apikey": api_key,
+        "Authorization": f"Bearer {service_jwt}",
+    }
     if content_type:
         headers["Content-Type"] = content_type
     return headers
@@ -59,11 +68,11 @@ def _headers(secret: str, content_type: str | None = None) -> dict[str, str]:
 
 def upload_private_object(object_path: str, data: bytes, content_type: str) -> str:
     """Upload an object without overwriting an existing object; return its key."""
-    base_url, secret, bucket = _configuration()
+    base_url, api_key, service_jwt, bucket = _configuration()
     try:
         response = requests.post(
             _object_url(base_url, bucket, object_path),
-            headers={**_headers(secret, content_type), "x-upsert": "false"},
+            headers={**_headers(api_key, service_jwt, content_type), "x-upsert": "false"},
             data=data,
             timeout=30,
         )
@@ -82,7 +91,7 @@ def download_private_object(object_path: str) -> bytes:
     try:
         response = requests.get(
             _object_url(base_url, bucket, object_path),
-            headers=_headers(secret),
+            headers=_headers(api_key, service_jwt),
             timeout=30,
         )
         if response.status_code != 200:
