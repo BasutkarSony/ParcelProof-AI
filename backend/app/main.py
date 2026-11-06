@@ -1034,7 +1034,7 @@ async def create_packing_inspection(
     try:
         result = run_inspection(manifest, photo_metas)
     except GeminiUnavailableError as exc:
-        await _record_ai_failure(exc, 503)
+        await _record_ai_failure(exc, getattr(exc, "status_code", 503))
     except RuntimeError as exc:
         await _record_ai_failure(RuntimeError(f"Vision inspection failed: {exc}"), 502)
 
