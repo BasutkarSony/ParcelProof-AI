@@ -665,11 +665,10 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
             if openai_key:
                 try:
                     return _run_openai_inspection(manifest, photo_metas, openai_key)
-                except RuntimeError as fallback_error:
-                    safe_fallback_message = str(fallback_error).strip()[:300]
+                except RuntimeError:
                     raise RuntimeError(
-                        f"{primary_diagnostic} The optional OpenAI vision fallback also failed: "
-                        f"{safe_fallback_message}"
+                        f"{primary_diagnostic} The optional OpenAI vision fallback also failed. "
+                        "Check its configured model and API access."
                     ) from None
             provider_status = 429 if getattr(final_error, "code", None) == 429 or "RESOURCE_EXHAUSTED" in str(final_error).upper() else 503
             raise GeminiUnavailableError(
