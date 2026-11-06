@@ -100,6 +100,10 @@ class PostgresConnection:
     def execute(self, query: str, parameters=()):
         return self._connection.execute(qmark_to_pyformat(query), parameters)
 
+    def execute_script(self, script: str):
+        """Execute a trusted migration script containing multiple SQL statements."""
+        return self._connection.execute(script, prepare=False)
+
     def commit(self) -> None:
         self._connection.commit()
 
