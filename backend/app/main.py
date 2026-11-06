@@ -982,17 +982,7 @@ async def create_packing_inspection(
             stored_paths.append(meta["path"])
         photo_metas.append(meta)
 
-    # 4. Run Gemini inspection; clean up photos on failure.
-    try:
-        result = run_inspection(manifest, photo_metas)
-    except GeminiUnavailableError as exc:
-        await _cleanup_stored()
-        raise HTTPException(status_code=503, detail=str(exc))
-    except RuntimeError as exc:
-        await _cleanup_stored()
-        raise HTTPException(status_code=502, detail=f"Gemini inspection failed: {str(exc)}")
-
-    # 5. Build photo records for persistence (no internal paths).
+    # 4. Build durable photo metadata before calling the external AI provider.
     photo_records = [
         {
             "id": m["id"],
@@ -1003,6 +993,50 @@ async def create_packing_inspection(
         }
         for m in photo_metas
     ]
+
+    async def _record_ai_failure(exc: Exception, status_code: int):
+        """Keep uploaded evidence even when the optional AI analysis is unavailable."""
+        failure_message = str(exc).strip()[:500] or "The vision provider did not return a usable result."
+        try:
+            failed_inspection = create_inspection(
+                manifest_id=manifest_id,
+                manifest_hash=manifest["manifest_hash"],
+                model_used=None,
+                ai_result={
+                    "inspection_state": "AI_FAILED",
+                    "failure_message": failure_message,
+                    "human_review_required": True,
+                    "retry_available": True,
+                },
+                photo_records=photo_records,
+                inspection_status="AI_FAILED",
+            )
+        except Exception:
+            await _cleanup_stored()
+            raise HTTPException(
+                status_code=status_code,
+                detail=(
+                    f"{failure_message} The database could not save this photo evidence. "
+                    "Keep the original files and retry."
+                ),
+            ) from None
+
+        raise HTTPException(
+            status_code=status_code,
+            detail=(
+                f"{failure_message} The uploaded photos and their hashes were preserved "
+                f"as failed inspection {failed_inspection['id']}. Retry the AI inspection "
+                "with the original photos; this failed attempt cannot be approved."
+            ),
+        )
+
+    # 5. Run the AI provider. Provider failure must not destroy the evidence.
+    try:
+        result = run_inspection(manifest, photo_metas)
+    except GeminiUnavailableError as exc:
+        await _record_ai_failure(exc, 503)
+    except RuntimeError as exc:
+        await _record_ai_failure(RuntimeError(f"Vision inspection failed: {exc}"), 502)
 
     # 6. Persist; clean up photos if the DB write fails.
     try:
