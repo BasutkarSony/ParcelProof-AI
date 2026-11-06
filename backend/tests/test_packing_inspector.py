@@ -1129,11 +1129,11 @@ class CleanupOnFailureTests(unittest.TestCase):
         from fastapi import HTTPException
         from app.packing_inspector import GeminiUnavailableError
 
+        manifest = self._finalized_manifest()
         for error, expected_status in (
             (RuntimeError("Gemini timeout"), 502),
             (GeminiUnavailableError("no key"), 503),
         ):
-            manifest = self._finalized_manifest()
             photos = [self._make_upload(_make_jpeg())]
             before_files = set(self._pi.PHOTO_DIR.iterdir())
 
