@@ -114,11 +114,16 @@ class PostgresConnection:
         self._connection.close()
 
     def __enter__(self):
-        self._connection.__enter__()
+        # sqlite3.Connection context managers manage transactions but do not
+        # close the connection. Preserve that behaviour for store.py callers.
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        return self._connection.__exit__(exc_type, exc_value, traceback)
+        if exc_type is None:
+            self._connection.commit()
+        else:
+            self._connection.rollback()
+        return False
 
     def __getattr__(self, name: str):
         return getattr(self._connection, name)
