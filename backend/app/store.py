@@ -1233,8 +1233,10 @@ def create_shipment_for_order(
         conn = _connect()
         try:
             # 1. Fetch and perform ALL checkout order validations FIRST
+            order_lock = " FOR UPDATE" if _uses_postgres() else ""
             order_row = conn.execute(
-                "SELECT id, paypal_order_id, paypal_capture_id, payment_status, currency, total_cents FROM orders WHERE id = ?",
+                "SELECT id, paypal_order_id, paypal_capture_id, payment_status, currency, total_cents "
+                f"FROM orders WHERE id = ?{order_lock}",
                 (checkout_order_id,),
             ).fetchone()
             if not order_row:
@@ -1349,12 +1351,18 @@ def create_shipment_for_order(
                 row = conn.execute("SELECT * FROM shipments WHERE order_id = ?", (shipment_order_id,)).fetchone()
                 return _row_to_shipment(row) if row else None
             except (sqlite3.IntegrityError, psycopg.IntegrityError):
-                # Concurrent conflict: another worker inserted first.
-                # Retrieve and validate linkage using this connection.
-                existing = conn.execute(
-                    "SELECT * FROM shipments WHERE checkout_order_id = ? OR paypal_capture_id = ?",
-                    (checkout_order_id, paypal_capture_id),
-                ).fetchone()
+                # A concurrent worker may have inserted the shipment first.
+                # PostgreSQL marks a transaction failed after IntegrityError;
+                # roll it back and perform recovery on a fresh connection.
+                conn.rollback()
+                recovery_conn = _connect()
+                try:
+                    existing = recovery_conn.execute(
+                        "SELECT * FROM shipments WHERE checkout_order_id = ? OR paypal_capture_id = ?",
+                        (checkout_order_id, paypal_capture_id),
+                    ).fetchone()
+                finally:
+                    recovery_conn.close()
                 if existing:
                     if existing["checkout_order_id"] != checkout_order_id:
                         raise ValueError(
