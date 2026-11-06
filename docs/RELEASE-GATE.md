@@ -7,12 +7,13 @@ This checklist reflects the verified state of the current PayPal AI Hackathon su
 - [x] Current submission repository is public: [BasutkarSony/ParcelProof-AI](https://github.com/BasutkarSony/ParcelProof-AI).
 - [x] GitHub detects the MIT open-source licence.
 - [x] Current repository created during the Hackathon Submission Period (4 November 2026).
-- [x] Latest green CI run: [42241783179](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42241783179), application commit `635282cde69cebcc929f72390ed970e005d80ea9`.
+- [x] Latest green CI run: [42242821982](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42242821982), current `main` head `96d659826fc9ab9270c5faf99c02e7cc5ab5b2ad`. The application behavior changes are in ancestor commit `635282cde69cebcc929f72390ed970e005d80ea9`.
 - [x] Backend unit suite: 238 tests discovered, 235 passed and 3 PostgreSQL-only tests skipped in this job.
 - [x] Three PostgreSQL 17 persistence integration tests passed in the separate job.
 - [x] Frontend tests, Oxlint and Vite production build passed.
 - [x] Docker deployment image built successfully.
-- [ ] Complete a final public repository secret/data audit, including commit history.
+- [x] Inspect the current `main` working tree: no real `.env`, DB, uploaded photo, local build or dependency artifacts are committed; `.gitignore` and `.dockerignore` exclude those paths.
+- [ ] Complete a full public repository secret/data audit across commit history.
 - [ ] Ensure the Devpost repository URL points to ParcelProof-AI, not the older ShipProof-AI snapshot.
 
 The previous public [ShipProof-AI repository](https://github.com/BasutkarSony/ShipProof-AI) is a historical snapshot created 30 October 2026. The current Render deployment and CI use ParcelProof-AI. The older repository is not archived; do not provide it as the submission source.
@@ -20,7 +21,7 @@ The previous public [ShipProof-AI repository](https://github.com/BasutkarSony/Sh
 ## B. Hosted demo and persistence
 
 - [x] Existing Render Free service is live: https://parcelproof-ai-058h.onrender.com
-- [x] Render deployment for application commit `635282cde69cebcc929f72390ed970e005d80ea9` is LIVE: `dep-dbmuvpmc6qcc73bk795g`.
+- [x] Current `main` head `96d659826fc9ab9270c5faf99c02e7cc5ab5b2ad` is deployed LIVE: `dep-dbmv2umc6qcc73bkbpug`.
 - [x] Application logs show `GET /health` HTTP 200 after deployment.
 - [x] Hosted checkout data persisted through Render into the connected Supabase PostgreSQL database.
 - [x] Supabase project is ACTIVE_HEALTHY; PostgreSQL 17 and all nine app tables exist.
