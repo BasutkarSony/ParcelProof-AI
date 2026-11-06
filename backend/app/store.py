@@ -74,6 +74,12 @@ def _connect(timeout: float = 30.0):
 
 
 def init_db() -> None:
+    require_database = os.getenv("PARCELPROOF_REQUIRE_DATABASE", "false").strip().lower()
+    if require_database in {"1", "true", "yes", "on"} and not _uses_postgres():
+        raise RuntimeError(
+            "This deployment requires PostgreSQL. Set DATABASE_URL before starting the service."
+        )
+
     if _uses_postgres():
         conn = _connect()
         try:
