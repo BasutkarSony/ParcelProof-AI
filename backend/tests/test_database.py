@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -72,6 +73,26 @@ class DatabaseAdapterTests(unittest.TestCase):
         self.assertEqual(raw.commits, 0)
         self.assertEqual(raw.rollbacks, 1)
         self.assertFalse(raw.closed)
+
+
+    @patch("psycopg.connect")
+    def test_postgres_connection_requires_tls_by_default(self, connect):
+        from app.database import connect_postgres
+
+        connect.return_value = FakeConnection()
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DATABASE_SSLMODE", None)
+            connect_postgres("postgresql://example")
+        self.assertEqual(connect.call_args.kwargs["sslmode"], "require")
+
+    @patch("psycopg.connect")
+    def test_postgres_connection_allows_explicit_ci_ssl_override(self, connect):
+        from app.database import connect_postgres
+
+        connect.return_value = FakeConnection()
+        with patch.dict(os.environ, {"DATABASE_SSLMODE": "disable"}):
+            connect_postgres("postgresql://example")
+        self.assertEqual(connect.call_args.kwargs["sslmode"], "disable")
 
     def test_hybrid_row_supports_name_and_position(self):
         row = HybridRow(["id", "status"], ("order-1", "PAID"))
