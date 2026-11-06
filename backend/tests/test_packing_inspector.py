@@ -697,6 +697,96 @@ class InspectionAPITests(unittest.TestCase):
                 )
         self.assertEqual(ctx.exception.status_code, 503)
 
+    def test_run_inspection_rate_limit_429_is_not_automatically_retried(self):
+        """A 429 is surfaced immediately so rate/quota limits are not hit again."""
+        from app.packing_inspector import run_inspection, GeminiUnavailableError
+        import tempfile
+
+        class RateLimitError(Exception):
+            code = 429
+            message = "rate_limit_exceeded"
+
+        manifest = {
+            "id": "man-429",
+            "shipment_order_id": "ORD-429",
+            "manifest_hash": "b" * 64,
+            "notes": None,
+            "items": [{
+                "id": "item-429",
+                "description": "Test Item",
+                "expected_qty": 1,
+                "sku": "SKU-429",
+                "fragile": False,
+            }],
+        }
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tf:
+            tf.write(_make_jpeg())
+            tf_path = tf.name
+
+        try:
+            photo_metas = [{"id": "p-429", "path": tf_path, "mime_type": "image/jpeg"}]
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-api-key", "OPENAI_API_KEY": ""}):
+                with patch("google.genai.Client") as mock_client_cls:
+                    mock_client = MagicMock()
+                    mock_client_cls.return_value = mock_client
+                    mock_client.models.generate_content.side_effect = RateLimitError("429")
+
+                    with self.assertRaises(GeminiUnavailableError) as ctx:
+                        run_inspection(manifest, photo_metas)
+
+                    self.assertEqual(ctx.exception.status_code, 429)
+                    self.assertIn("short-window rate limit", str(ctx.exception))
+                    self.assertIn("not automatically retried", str(ctx.exception))
+                    self.assertEqual(mock_client.models.generate_content.call_count, 1)
+        finally:
+            if os.path.exists(tf_path):
+                os.unlink(tf_path)
+
+    def test_run_inspection_daily_quota_429_is_not_automatically_retried(self):
+        """A daily quota exhaustion is distinguished from a short-window rate limit."""
+        from app.packing_inspector import run_inspection, GeminiUnavailableError
+        import tempfile
+
+        class DailyQuotaError(Exception):
+            code = 429
+            message = "quota_exceeded daily quota"
+
+        manifest = {
+            "id": "man-quota",
+            "shipment_order_id": "ORD-QUOTA",
+            "manifest_hash": "c" * 64,
+            "notes": None,
+            "items": [{
+                "id": "item-quota",
+                "description": "Test Item",
+                "expected_qty": 1,
+                "sku": "SKU-QUOTA",
+                "fragile": False,
+            }],
+        }
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tf:
+            tf.write(_make_jpeg())
+            tf_path = tf.name
+
+        try:
+            photo_metas = [{"id": "p-quota", "path": tf_path, "mime_type": "image/jpeg"}]
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-api-key", "OPENAI_API_KEY": ""}):
+                with patch("google.genai.Client") as mock_client_cls:
+                    mock_client = MagicMock()
+                    mock_client_cls.return_value = mock_client
+                    mock_client.models.generate_content.side_effect = DailyQuotaError("429")
+
+                    with self.assertRaises(GeminiUnavailableError) as ctx:
+                        run_inspection(manifest, photo_metas)
+
+                    self.assertEqual(ctx.exception.status_code, 429)
+                    self.assertIn("daily quota", str(ctx.exception))
+                    self.assertIn("quota reset", str(ctx.exception))
+                    self.assertEqual(mock_client.models.generate_content.call_count, 1)
+        finally:
+            if os.path.exists(tf_path):
+                os.unlink(tf_path)
+
     def test_run_inspection_server_error_503_raises_gemini_unavailable(self):
         """Simulate google.genai.errors.ServerError(503, '503 UNAVAILABLE') and ensure mapping to GeminiUnavailableError."""
         from app.packing_inspector import run_inspection, GeminiUnavailableError
