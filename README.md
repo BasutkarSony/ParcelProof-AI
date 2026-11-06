@@ -161,7 +161,7 @@ References: [Render Free instances](https://render.com/docs/free), [Render Bluep
 
 ### What has and has not been verified
 
-As of 6 November 2026, the latest `main` commit `c4d244508e5ce97ddcfdef43a6659486be410111` is deployed LIVE on the existing Render Free service. The latest [GitHub Actions run](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42236129396) passed backend tests (232 passed; 3 PostgreSQL-only tests skipped in that job), all 3 PostgreSQL integration tests, frontend tests/lint/build and the Docker image build. Render application logs show repeated `/health` HTTP 200 responses.
+As of 6 November 2026, the existing Render Free service deploys `main` only after repository checks pass. See [docs/QA-STATUS.md](docs/QA-STATUS.md) for the latest verified commit, CI run and Render deployment. At the last verification, backend unit tests, PostgreSQL integration tests, frontend tests/lint/build and the Docker image build all passed; Render application logs showed repeated `/health` HTTP 200 responses.
 
 A real PayPal Sandbox checkout was completed through the hosted app. The backend verified/captured the payment and created one persisted order, one linked shipment and one finalized order-derived manifest in Supabase. The current Supabase snapshot contains 1 order, 1 shipment and 1 finalized manifest, but **0 packing inspections, 0 inspection photos and 0 human-review decisions**.
 
