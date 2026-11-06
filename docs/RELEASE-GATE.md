@@ -7,7 +7,7 @@ Use this checklist against the deployed judge environment. A green unit-test sui
 - [x] Public repository opens without authentication.
 - [x] Repository contains source, `README.md`, merchant manual, `.env.example`, tests and MIT licence.
 - [ ] No `.env`, API keys, database files, buyer data, uploaded photos, `node_modules`, build output or local virtual environment is committed.
-- [x] GitHub Actions backend unit tests pass (239 tests; 3 PostgreSQL-only tests run separately).
+- [x] GitHub Actions backend suite passes (239 discovered: 236 pass in SQLite job, 3 PostgreSQL-only tests run separately).
 - [x] Three PostgreSQL 17 persistence and concurrency integration tests pass.
 - [x] GitHub Actions frontend tests pass.
 - [x] GitHub Actions lint and production build pass.
