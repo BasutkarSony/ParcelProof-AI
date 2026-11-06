@@ -7,19 +7,21 @@ Use this checklist against the deployed judge environment. A green unit-test sui
 - [x] Public repository opens without authentication.
 - [x] Repository contains source, `README.md`, merchant manual, `.env.example`, tests and MIT licence.
 - [ ] No `.env`, API keys, database files, buyer data, uploaded photos, `node_modules`, build output or local virtual environment is committed.
-- [x] GitHub Actions backend unit tests pass (237 tests; one PostgreSQL-only test is run separately).
-- [x] PostgreSQL 17 persistence integration test passes.
+- [x] GitHub Actions backend unit tests pass (239 tests; 3 PostgreSQL-only tests run separately).
+- [x] Three PostgreSQL 17 persistence and concurrency integration tests pass.
 - [x] GitHub Actions frontend tests pass.
 - [x] GitHub Actions lint and production build pass.
 - [x] Docker image builds with the SQL migrations included in the runtime image.
 
-Latest green run: [GitHub Actions run 42193452445](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42193452445).
+Latest green run: [GitHub Actions run 42194859971](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42194859971).
 
 ## B. Hosted demo and access
 
-- [x] Supabase application schema migrations are applied; all nine app tables exist.
+- [x] Five Supabase application migrations are applied; all nine app tables exist.
+- [x] Explicit item/photo/review ordering columns are present in Supabase.
 - [x] Row Level Security is enabled on all nine app tables; direct browser-role access remains denied.
-- [x] Private `inspection-photos` bucket exists with the configured JPEG, PNG and WebP restrictions.
+- [x] RLS auto-enable helper function execution is revoked from public API roles.
+- [x] Private `inspection-photos` bucket exists with 10 MB object limit and JPEG, PNG and WebP restrictions.
 - [x] Render Blueprint uses the Free plan and does not attach a paid disk.
 - [ ] Required `DATABASE_URL`, Supabase API key and Storage service JWT are entered in the actual Render service's private Environment settings.
 - [ ] The deployed container applies/recognizes its migrations and connects to the actual Supabase database.
