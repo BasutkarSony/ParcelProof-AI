@@ -766,6 +766,32 @@ class InspectionAPITests(unittest.TestCase):
         self.assertEqual(inspections[0]["inspection_status"], "AI_FAILED")
         self.assertEqual(inspections[0]["photo_count"], 1)
 
+    def test_gemini_quota_limit_returns_429_and_preserves_evidence(self):
+        from fastapi import HTTPException
+        from app.packing_inspector import GeminiUnavailableError
+
+        manifest = self._finalized_manifest_via_api()
+        photos = [self._make_upload(_make_jpeg())]
+        before_files = set(self._pi.PHOTO_DIR.iterdir())
+
+        with patch(
+            "app.main.run_inspection",
+            side_effect=GeminiUnavailableError(
+                "Gemini rate limit or quota was reached (HTTP 429).",
+                status_code=429,
+            ),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                self._run_async(self.create_packing_inspection(manifest["id"], photos))
+
+        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertIn("preserved as failed inspection", ctx.exception.detail)
+        new_files = set(self._pi.PHOTO_DIR.iterdir()) - before_files
+        self.assertEqual(len(new_files), 1)
+        inspections = list_inspections_for_manifest(manifest["id"])
+        self.assertEqual(inspections[0]["inspection_status"], "AI_FAILED")
+        self.assertEqual(inspections[0]["photo_count"], 1)
+
     def test_create_inspection_gemini_runtime_error_raises_502(self):
         from fastapi import HTTPException
         manifest = self._finalized_manifest_via_api()
