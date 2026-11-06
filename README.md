@@ -161,7 +161,15 @@ References: [Render Free instances](https://render.com/docs/free), [Render Bluep
 
 ### What has and has not been verified
 
-GitHub Actions now tests the PostgreSQL code path against a temporary PostgreSQL 17 service, and the Docker build checks that SQL migrations are copied into the runtime image. The Supabase schema and RLS setup have also been applied and inspected. The actual Render service still needs its private environment variables configured and a live deployed checkout/photo-storage test before it can be called verified.
+As of 6 November 2026, the latest `main` commit `c4d244508e5ce97ddcfdef43a6659486be410111` is deployed LIVE on the existing Render Free service. The latest [GitHub Actions run](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42236129396) passed backend tests (232 passed; 3 PostgreSQL-only tests skipped in that job), all 3 PostgreSQL integration tests, frontend tests/lint/build and the Docker image build. Render application logs show repeated `/health` HTTP 200 responses.
+
+A real PayPal Sandbox checkout was completed through the hosted app. The backend verified/captured the payment and created one persisted order, one linked shipment and one finalized order-derived manifest in Supabase. The current Supabase snapshot contains 1 order, 1 shipment and 1 finalized manifest, but **0 packing inspections, 0 inspection photos and 0 human-review decisions**.
+
+The deployed app has not yet completed a successful live Gemini packing-photo inspection. A previous attempt returned temporary Gemini 503/429 errors. The code now preserves uploaded photo evidence and records a non-approvable `AI_FAILED` attempt on provider failure; this recovery behavior passes automated regression tests, but the same failure/retrieval path still needs a fresh hosted verification. The optional `OPENAI_API_KEY` fallback is not configured.
+
+PayPal OAuth was verified in Sandbox and displayed the tracking write gate as locked. No PayPal tracking write has been performed; `PAYPAL_TRACKING_SUBMISSION_ENABLED=false` remains the intended setting. The prototype does not currently fetch carrier events, so merchant-entered tracking or delivery notes are not independently carrier-verified.
+
+The deterministic shipment analyzer now reports operational record completeness only. It does not calculate Seller Protection eligibility. PayPal makes its own eligibility decision under the applicable country, account, transaction and claim rules.
 
 ## Testing
 
