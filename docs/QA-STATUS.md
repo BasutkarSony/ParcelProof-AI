@@ -1,42 +1,60 @@
-# QA Status — 4 November 2026
+# QA Status — 6 November 2026
 
-## Current CI verification — 5 November 2026
+## Latest repository verification
 
-The repository's GitHub Actions run [41898942314](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/41898942314) completed successfully on the published `main` branch. It passed:
+GitHub Actions run [42193452445](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42193452445) completed successfully on `main` on 6 November 2026.
 
-- Backend unit tests.
-- Frontend tests, lint and production build.
-- Docker deployment image build.
+| Check | Result |
+|---|---|
+| Backend unit suite | **237 tests, passed** (1 PostgreSQL-only test is skipped in this SQLite job and run separately) |
+| PostgreSQL integration | **Passed** against a temporary PostgreSQL 17 service |
+| Frontend tests | **Passed** |
+| Oxlint | **Passed** |
+| Vite production build | **Passed** |
+| Docker image build | **Passed** |
 
-This successful CI run supersedes the earlier environment-specific test/build limitations described below for those CI checks. It does **not** establish that live external integrations or a hosted deployment work. In particular, no successful PayPal Sandbox checkout/capture, real Gemini API inspection, hosted deployment, or persistence-across-restart test has been demonstrated. PayPal tracking writes remain disabled by default.
+The PostgreSQL integration test exercised the persistence sequence: create an order, attach a completed PayPal capture, create one shipment, derive and finalize its manifest, persist inspection photo metadata and record a human review. It also checks shipment retry idempotency and item/photo ordering. The Docker image includes the checked-in SQL migrations.
 
+These are repository-level tests. They do not establish that live external services or the hosted judge environment have passed end-to-end verification.
 
-This is the result of checking the supplied `ParcelProof-AI-final.zip` in the available execution environment. It is not a claim that the deployed application has passed its release gate.
+## Supabase project inspection
 
-## Backend
+The connected Supabase project was inspected directly.
 
-Command:
+- The four checked-in SQL migrations have been applied.
+- All nine ParcelProof application tables exist.
+- The three demo catalogue products are present; the other application tables contain no order/evidence records from a real app session.
+- All nine application tables have Row Level Security enabled.
+- No browser-role policies were created. Direct `anon` and `authenticated` reads are denied; the backend is intended to use its trusted PostgreSQL connection.
+- The automatic RLS event trigger remains installed. Direct function execution for `public.rls_auto_enable()` is revoked from `PUBLIC`, `anon` and `authenticated`.
+- The `inspection-photos` bucket is private, has a 10 MB object limit and allows JPEG, PNG and WebP. It currently contains zero objects.
 
-```bash
-cd backend
-python -m unittest discover -s tests -v
-```
+The live Supabase schema and its security settings are verified. The ParcelProof application has **not yet been connected to it from a deployed Render service**.
 
-Result: **218 tests discovered; 214 passed; 4 errored before exercising their assertions** because `google.genai` is not installed in this environment. The four affected tests cover Gemini 503 cleanup/error mapping and the optional OpenAI fallback photo set. Installing `google-genai` was attempted, but package installation could not reach the package index because DNS/network access is unavailable here. The repository's `backend/requirements.txt` does include `google-genai`; rerun the full suite after installing the requirements in CI or a network-enabled environment.
+## Persistence implementation
 
-## Frontend
+- Local development continues to use SQLite by default.
+- When `DATABASE_URL` is set, the backend uses the psycopg 3 PostgreSQL adapter and applies checked-in SQL migrations.
+- PostgreSQL queries preserve checkout-item, manifest-item, photo and review ordering.
+- Review and checkout-manifest creation use PostgreSQL row locks where serialization is required.
+- The Render Blueprint is configured for the Free web-service plan with no disk. It requires `DATABASE_URL` and fails closed rather than silently using an ephemeral SQLite file.
+- Inspection photos use the private Supabase Storage adapter when configured.
 
-`npm ci` was attempted from `frontend/`. It did not complete before the execution timeout, and the environment has no populated npm cache or network access to fetch the packages. Therefore frontend tests, Oxlint and the production Vite build have **not been verified in this environment**. The GitHub Actions workflow pins Node.js 22.22.2 to meet the Node engine requirements declared by the locked frontend dependencies. Run the workflow in GitHub Actions and treat its result as the authoritative frontend check.
+## Not yet verified in the live hosted environment
 
-## Other environment limits
+- Render deployment and HTTPS health check.
+- Render's actual `DATABASE_URL` connection to the Supabase Session Pooler.
+- An actual photo upload, AI read, retrieval and cleanup against the private Supabase bucket using the hosted credentials.
+- Successful PayPal Sandbox buyer approval, capture and return flow.
+- A real Gemini Vision inspection with the configured API key.
+- Database and photo retrieval after a hosted restart/redeploy.
+- Judge login, wrong-password rejection and full end-to-end demo.
+- PayPal tracking writes remain disabled by default and have not been tested.
 
-Docker is not installed in this execution environment, so the deployment image was not built here. No live PayPal Sandbox checkout, hosted deployment, persistent-disk restart, or Gemini API call was performed as part of this source audit.
+## Free-tier operational limits
 
-## Source changes in this QA pass
+Render Free web services spin down after 15 minutes without inbound traffic and can take about a minute to start again. Their filesystems are ephemeral, which is why the deployment uses Supabase for durable data. Supabase Free projects can pause after a week of very low database activity. These limits are acceptable for a hackathon demo but are not a production availability guarantee.
 
-- Repaired the visible mojibake text in `frontend/src/main.jsx`.
-- Changed the sidebar monogram from the old `S` to `P` for ParcelProof AI.
-- Pinned CI's Node version to 22.22.2.
-- Added the merchant user manual, release gate, and short demo script.
+## Release decision
 
-No repository was created, pushed, deployed or connected to PayPal during this pass. The PayPal tracking write gate remains disabled by default.
+**Not release-ready yet.** The local/CI SQLite and PostgreSQL code paths are tested, and the Supabase schema has been prepared. The hosted app still needs private environment variables, deployment and live PayPal/AI/storage verification. Track the remaining checks in [RELEASE-GATE.md](RELEASE-GATE.md).
