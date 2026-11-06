@@ -144,7 +144,7 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
         <div className="brand-icon" aria-hidden="true">P</div>
         <div className="brand-title">
           <strong>ParcelProof AI</strong>
-          <small>PAYPAL EVIDENCE CONTROL</small>
+          <small>EXPORT DOCUMENT CONTROL</small>
         </div>
       </div>
 
@@ -198,16 +198,16 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
       <div className="side-card">
         <div className="side-card-header">
           <span className="pulse" aria-hidden="true"></span>
-          <span>Payment-to-export workflow</span>
+          <span>Your export checklist</span>
         </div>
         <div className="side-card-body">
-          Start with a captured PayPal payment, verify the finalized shipment manifest, then review a commercial invoice or packing list. Carrier events and PayPal eligibility are not currently verified.
+          Match each paid order to its shipment manifest and commercial invoice or packing list. Review any differences before dispatch.
         </div>
       </div>
 
       <div className="sidebar-footer">
-        <strong>EXPORT OPERATIONS</strong>
-        <p>PayPal-linked records · Document review · Human-confirmed reconciliation.</p>
+        <strong>PARCELPROOF</strong>
+        <p>Keep the payment, shipment and export paperwork in sync.</p>
       </div>
     </aside>
   )
@@ -1044,7 +1044,7 @@ function ShipmentReviewMain({
         <div className="breadcrumb">
           <span>Workspace</span>
           <span>/</span>
-          <strong>Shipment Evidence Queue</strong>
+          <strong>Export review</strong>
         </div>
         <div className="topbar-actions">
           <button
@@ -1060,12 +1060,12 @@ function ShipmentReviewMain({
                 : oauthVerified
                 ? oauthMessage
                 : paypal.configured
-                ? 'PayPal Sandbox: Authenticate ↗'
+                ? 'Connect PayPal Sandbox ↗'
                 : 'PayPal Sandbox: Not Configured'}
             </span>
           </button>
           <div className="pill-status">
-            <span style={{ color: '#275619', fontWeight: 700 }}>Write Gate: Locked</span>
+            <span style={{ color: '#275619', fontWeight: 700 }}>PayPal updates: Off</span>
           </div>
         </div>
       </header>
@@ -1073,15 +1073,15 @@ function ShipmentReviewMain({
       <section className="hero export-hero" aria-label="ParcelProof payment-to-export workflow">
         <div className="hero-copy">
           <div className="eyebrow">
-            <span aria-hidden="true">●</span> PAYPAL PAYMENT-TO-EXPORT RECONCILIATION
+            <span aria-hidden="true">●</span> EXPORT DOCUMENT REVIEW
           </div>
           <h1>
-            From payment
+            Make every export
             <br />
-            <span>to export proof.</span>
+            <span>document match.</span>
           </h1>
           <p>
-            Reconcile what the buyer paid with what the merchant declared and what appears on the commercial invoice or packing list. Find differences before the export record is handed off.
+            Bring the PayPal payment, shipment manifest and export documents into one review. Catch differences in products, quantities, values and recipient details before dispatch.
           </p>
           <div className="export-hero-actions">
             {nextActionShipment ? (
@@ -1089,33 +1089,33 @@ function ShipmentReviewMain({
                 className="btn-primary"
                 onClick={() => navigateTo('/manifests', { shipmentId: nextActionShipment.order_id })}
               >
-                Open {nextActionShipment.order_id} export workflow →
+                Review {nextActionShipment.order_id} →
               </button>
             ) : (
               <button className="btn-primary" onClick={() => navigateTo('/checkout')}>
                 Create PayPal Sandbox checkout →
               </button>
             )}
-            <span>Merchant-confirmed checks · No automatic PayPal submissions</span>
+            <span>You review every result. Nothing is sent to PayPal automatically.</span>
           </div>
         </div>
 
         <div className="hero-art-card export-flow-card" aria-label="Three records reviewed together">
           <div className="export-flow-step">
             <span>01</span>
-            <div><strong>PayPal payment</strong><small>Captured order and buyer details</small></div>
-            <b>Source</b>
+            <div><strong>PayPal payment</strong><small>What your customer paid for</small></div>
+            <b>Order</b>
           </div>
           <div className="export-flow-connector"></div>
           <div className="export-flow-step">
             <span>02</span>
-            <div><strong>Shipment manifest</strong><small>Declared SKUs and quantities</small></div>
-            <b>Sealed</b>
+            <div><strong>Shipment manifest</strong><small>Products and quantities to ship</small></div>
+            <b>Manifest</b>
           </div>
           <div className="export-flow-connector"></div>
           <div className="export-flow-step">
             <span>03</span>
-            <div><strong>Export document</strong><small>Invoice or packing list</small></div>
+            <div><strong>Export documents</strong><small>Commercial invoice or packing list</small></div>
             <b>Review</b>
           </div>
           <div className="art-tag">MATCH · MISMATCH · REVIEW</div>
@@ -1126,9 +1126,9 @@ function ShipmentReviewMain({
         <div className="arch-info">
           <div className="arch-badge">HOW IT WORKS</div>
           <div className="arch-text">
-            <strong>Three source records. One review trail.</strong>
+            <strong>One shipment. Three records to keep in sync.</strong>
             <p>
-              The paid PayPal order is the transaction anchor. The finalized manifest records what the merchant declared. A merchant-confirmed invoice or packing list is checked against both. Missing or unreadable fields stay marked for review.
+              We compare the captured order with the finalized manifest and the invoice or packing list you confirm. Differences are grouped into clear checks, with the original document and review history kept alongside the shipment.
             </p>
           </div>
         </div>
@@ -1137,13 +1137,13 @@ function ShipmentReviewMain({
           onClick={() => setShowArchDetails(prev => !prev)}
           aria-expanded={showArchDetails}
         >
-          {showArchDetails ? 'Hide limits ▲' : 'What this does not verify ▼'}
+          {showArchDetails ? 'Hide details ▲' : 'What gets checked ▼'}
         </button>
       </section>
 
       {showArchDetails && (
         <div className="arch-details-drawer export-limits">
-          <strong>Important boundaries</strong>
+          <strong>What these checks cover</strong>
           <div className="arch-grid">
             <div className="arch-card"><strong>Carrier events</strong>Live carrier scans are not currently fetched or independently verified.</div>
             <div className="arch-card"><strong>PayPal protection</strong>A reconciliation result does not determine Seller Protection eligibility or a dispute outcome.</div>
@@ -1155,32 +1155,32 @@ function ShipmentReviewMain({
 
       <section className="stats-grid export-stats-grid" aria-label="Export workflow overview">
         <div className="stat-card">
-          <span>LINKED PAYPAL CHECKOUTS</span>
+          <span>PAYPAL-LINKED SHIPMENTS</span>
           <strong>{paidPayPalOrders.length.toString().padStart(2, '0')}</strong>
-          <small>Payment records linked to shipments</small>
+          <small>Paid orders with a shipment record</small>
         </div>
         <div className="stat-card">
-          <span>DISPATCH DETAILS MISSING</span>
+          <span>NEED SHIPPING DETAILS</span>
           <strong className={shipmentDetailsMissing > 0 ? 'red' : 'green'}>{shipmentDetailsMissing.toString().padStart(2, '0')}</strong>
-          <small>Tracking number or carrier not entered</small>
+          <small>Tracking number or carrier not added yet</small>
         </div>
         <div className="stat-card">
-          <span>DOCUMENT TYPES</span>
+          <span>EXPORT DOCUMENT TYPES</span>
           <strong>02</strong>
           <small>Commercial invoice and packing list</small>
         </div>
         <div className="stat-card">
-          <span>RECONCILIATION DECISION</span>
-          <strong className="export-stat-word">HUMAN</strong>
-          <small>Merchant confirmation is required</small>
+          <span>FINAL REVIEW</span>
+          <strong className="export-stat-word">YOU</strong>
+          <small>You confirm the document fields and review the result</small>
         </div>
       </section>
 
       <section className="queue-header">
         <div className="queue-title">
-          <div className="eyebrow">PAYPAL-LINKED SHIPMENTS</div>
-          <h2>Export reconciliation queue</h2>
-          <p>Open a paid shipment to review its manifest, add export documents and resolve mismatches. Sample shipments remain separate.</p>
+          <div className="eyebrow">YOUR WORKSPACE</div>
+          <h2>Shipments to review</h2>
+          <p>Select a paid order to check its shipment manifest and export documents.</p>
         </div>
       </section>
 
@@ -1198,7 +1198,7 @@ function ShipmentReviewMain({
             className={`filter-tab ${activeTab === 'paypal' ? 'active' : ''}`}
             onClick={() => setActiveTab('paypal')}
           >
-            PayPal linked <span>{paidPayPalOrders.length}</span>
+            PayPal orders <span>{paidPayPalOrders.length}</span>
           </button>
           <button
             role="tab"
@@ -1224,7 +1224,7 @@ function ShipmentReviewMain({
           <input
             type="search"
             className="search-input"
-            placeholder="Search by order, txn, carrier…"
+            placeholder="Search shipments or PayPal orders…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             aria-label="Search shipments"
@@ -1290,7 +1290,7 @@ function ShipmentReviewMain({
                           : 'pill-unchecked')
                       }
                     >
-                      {result?.loading ? 'CHECKING…' : status || 'NOT CHECKED'}
+                      {result?.loading ? 'CHECKING…' : order.checkout_order_id ? 'PAYMENT CAPTURED' : status || 'NOT CHECKED'}
                     </span>
                   </div>
                 </div>
@@ -1299,18 +1299,18 @@ function ShipmentReviewMain({
                   <div className="detail-col">
                     <small>Tracking Number</small>
                     <strong className={!order.tracking_number ? 'missing' : ''}>
-                      {order.tracking_number || 'Missing Number'}
+                      {order.tracking_number || 'Not added'}
                     </strong>
                   </div>
                   <div className="detail-col">
                     <small>Carrier</small>
                     <strong>
-                      {order.carrier === 'OTHER' ? order.carrier_name_other || 'OTHER' : order.carrier || 'Not provided'}
+                      {order.carrier === 'OTHER' ? order.carrier_name_other || 'OTHER' : order.carrier === 'UNASSIGNED' || !order.carrier ? 'Not assigned' : order.carrier}
                     </strong>
                   </div>
                   <div className="detail-col">
                     <small>Shipment Status</small>
-                    <strong>{order.status}</strong>
+                    <strong>{order.status === 'ON_HOLD' ? 'Awaiting dispatch' : order.status?.replaceAll('_', ' ')}</strong>
                   </div>
                   <div className="detail-col">
                     <small>Order Value</small>
@@ -1323,14 +1323,14 @@ function ShipmentReviewMain({
                     <strong>{order.buyer_name || '—'}</strong>
                   </div>
                   <div className="detail-col">
-                    <small>Destination Address</small>
+                    <small>Delivery address</small>
                     <strong>{order.shipping_address || '—'}</strong>
                   </div>
                 </div>
 
                 {order.evidence_text && (
                   <div className="evidence-snippet">
-                    <strong>Carrier Tracking Evidence Scan:</strong>
+                    <strong>Shipment activity:</strong>
                     {order.evidence_text}
                   </div>
                 )}
@@ -1362,7 +1362,7 @@ function ShipmentReviewMain({
                 <div className="card-footer-row">
                   <span>
                     {order.checkout_order_id
-                      ? 'PayPal payment linked · Continue export review'
+                      ? 'Payment received · Export review is next'
                       : 'Sample record · Not a PayPal checkout'}
                   </span>
                   <div className="card-footer-actions">
@@ -1406,10 +1406,10 @@ function ShipmentReviewMain({
 
       <footer>
         <div>
-          <strong>PARCELPROOF AI</strong> · Pre-Submission Shipment Evidence Control
+          <strong>PARCELPROOF</strong> · Export document review
         </div>
         <p>
-          Deterministic checks and AI analysis assist in evidence quality; official dispute outcomes are determined by PayPal.
+          Keep the PayPal order, shipment manifest and export documents aligned. Review each difference before you proceed.
         </p>
       </footer>
     </main>

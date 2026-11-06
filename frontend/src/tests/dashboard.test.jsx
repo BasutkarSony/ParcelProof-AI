@@ -55,10 +55,13 @@ describe('Dashboard', () => {
     render(<App />)
 
     expect(await screen.findByText('SHP-1001')).toBeInTheDocument()
+    expect(screen.getByText('Make every export')).toBeInTheDocument()
+    expect(screen.getByText('document match.')).toBeInTheDocument()
+    expect(screen.queryByText(/Carrier events and PayPal eligibility are not currently verified/)).not.toBeInTheDocument()
     expect(screen.getByText('LINKED PAYPAL CHECKOUTS')).toBeInTheDocument()
-    expect(screen.getByText('Export reconciliation queue')).toBeInTheDocument()
+    expect(screen.getByText('Shipments to review')).toBeInTheDocument()
     expect(screen.queryByText('ORD-1001')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Open SHP-1001 export workflow/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Review SHP-1001/ })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('tab', { name: /Sample records/ }))
     expect(await screen.findByText('ORD-1001')).toBeInTheDocument()
