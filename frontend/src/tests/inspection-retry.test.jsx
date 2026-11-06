@@ -118,10 +118,10 @@ describe('AI inspection retry behavior', () => {
     fireEvent.click(screen.getByRole('button', { name: /Run AI Vision Inspection/ }))
 
     expect(await screen.findByText(/HTTP 429/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry after quota reset' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry after limit resets' }))
 
     expect(await screen.findByText(/AI Packing Inspection Completed/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Retry after quota reset' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry after limit resets' })).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2)
   })
 
