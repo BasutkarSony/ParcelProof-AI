@@ -616,7 +616,7 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
             "No vision provider is configured. Add GEMINI_API_KEY or OPENAI_API_KEY to backend/.env."
         )
 
-    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
+    model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
 
     # Import here so unit tests can run without a live provider connection.
     from google import genai
