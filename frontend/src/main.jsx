@@ -450,7 +450,7 @@ export default function App() {
   const readyChecksCount = validationRun ? validatedCount.filter(r => r.result === 'PASS').length : null
   const blockedCount = validationRun ? validatedCount.filter(r => r.result === 'BLOCKED').length : null
   const aiList = Object.values(aiResults).filter(r => !r.loading && !r.error)
-  const protectionReadyCount = aiAnalysisRun ? aiList.filter(r => r.protection_tier === 'FULL_PROTECTION_READY').length : null
+  const evidenceCompleteCount = aiAnalysisRun ? aiList.filter(r => r.evidence_tier === 'RECORD_COMPLETE').length : null
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
@@ -469,10 +469,10 @@ export default function App() {
       const ai = aiResults[order.order_id]
 
       if (activeTab === 'needs-remediation') {
-        return (res && res.result === 'BLOCKED') || (ai && (ai.protection_tier === 'CRITICAL_DEFECT' || ai.protection_tier === 'EVIDENCE_INCOMPLETE'))
+        return (res && res.result === 'BLOCKED') || (ai && (ai.evidence_tier === 'MAJOR_EVIDENCE_GAPS' || ai.evidence_tier === 'EVIDENCE_GAPS'))
       }
-      if (activeTab === 'protection-ready') {
-        return ai && ai.protection_tier === 'FULL_PROTECTION_READY'
+      if (activeTab === 'evidence-complete') {
+        return ai && ai.evidence_tier === 'RECORD_COMPLETE'
       }
       if (activeTab === 'delivered') {
         return order.status === 'DELIVERED'
@@ -757,7 +757,7 @@ export default function App() {
           batchValidateLoading={batchValidateLoading}
           readyChecksCount={readyChecksCount}
           blockedCount={blockedCount}
-          protectionReadyCount={protectionReadyCount}
+          evidenceCompleteCount={evidenceCompleteCount}
           validationRun={validationRun}
           aiAnalysisRun={aiAnalysisRun}
           testPayPalConnection={testPayPalConnection}
@@ -798,7 +798,7 @@ export default function App() {
             <div className="drawer-content">
               {inspectLoading || currentAiResult?.loading ? (
                 <div style={{ textAlign: 'center', padding: '40px' }} role="status" aria-live="polite">
-                  Evaluating shipment evidence against PayPal Seller Protection criteria…
+                  Checking shipment record completeness…
                 </div>
               ) : currentAiResult?.error ? (
                 <div className="findings-box issues" role="alert">{currentAiResult.error}</div>
@@ -807,21 +807,21 @@ export default function App() {
                   <div className="score-hero-box">
                     <div className="score-hero-info">
                       <div className="eyebrow" style={{ color: '#2b5220' }}>
-                        PROTECTION READINESS RATING
+                        SHIPMENT EVIDENCE QUALITY
                       </div>
-                      <strong>{currentAiResult.readiness_label}</strong>
+                      <strong>{currentAiResult.evidence_label}</strong>
                       <p>
-                        Auditable score based on carrier tracking integrity, $750+ signature compliance, and destination matching.
+                        Operational completeness indicator only. It does not assess PayPal Seller Protection or verify carrier events.
                       </p>
                     </div>
                     <div
                       className={
                         'score-meter ' +
-                        (currentAiResult.readiness_score >= 85 ? 'high' : currentAiResult.readiness_score >= 70 ? 'med' : 'low')
+                        (currentAiResult.evidence_score >= 85 ? 'high' : currentAiResult.evidence_score >= 70 ? 'med' : 'low')
                       }
-                      aria-label={`Readiness score: ${currentAiResult.readiness_score} out of 100`}
+                      aria-label={`Evidence completeness score: ${currentAiResult.evidence_score} out of 100`}
                     >
-                      {currentAiResult.readiness_score}
+                      {currentAiResult.evidence_score}
                     </div>
                   </div>
 
@@ -836,98 +836,64 @@ export default function App() {
 
                   <div>
                     <div className="nav-section" style={{ color: 'var(--slate)', margin: '0 0 8px' }}>
-                      PayPal Seller Protection Policy Matrix
+                      Shipment Record Checks
                     </div>
                     <div className="matrix-container" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
                       <div className="matrix-item">
-                        <small>INR DEFENSE READINESS</small>
-                        <span className={'matrix-status-tag ' + (currentAiResult.seller_protection.item_not_received_eligible ? 'pill-pass' : 'pill-blocked')}>
-                          {currentAiResult.seller_protection.item_not_received_eligible ? 'DEFENSE SUPPORTED' : 'EVIDENCE INCOMPLETE'}
+                        <small>TRACKING NUMBER</small>
+                        <span className={'matrix-status-tag ' + (currentAiResult.evidence_checks.tracking_number_recorded ? 'pill-pass' : 'pill-blocked')}>
+                          {currentAiResult.evidence_checks.tracking_number_recorded ? 'RECORDED' : 'MISSING'}
                         </span>
-                        <p>
-                          {currentAiResult.seller_protection.item_not_received_eligible
-                            ? 'Delivery record substantiates online proof of delivery to destination address.'
-                            : 'Missing verifiable delivery status or $750+ signature proof.'}
-                        </p>
+                        <p>A tracking number is entered for this shipment.</p>
                       </div>
-
                       <div className="matrix-item">
-                        <small>UNAUTHORIZED TXN</small>
-                        <span className={'matrix-status-tag ' + (currentAiResult.seller_protection.unauthorized_transaction_eligible ? 'pill-pass' : 'pill-blocked')}>
-                          {currentAiResult.seller_protection.unauthorized_transaction_eligible ? 'DISPATCH PROVEN' : 'INCOMPLETE PROOF'}
+                        <small>CARRIER</small>
+                        <span className={'matrix-status-tag ' + (currentAiResult.evidence_checks.carrier_recorded ? 'pill-pass' : 'pill-blocked')}>
+                          {currentAiResult.evidence_checks.carrier_recorded ? 'RECORDED' : 'MISSING'}
                         </span>
-                        <p>Proof of shipment dispatch date and carrier tracking documentation.</p>
+                        <p>The carrier name is entered; the carrier account is not connected.</p>
                       </div>
-
                       <div className="matrix-item">
-                        <small>$750+ SIGNATURE</small>
-                        <span
-                          className={
-                            'matrix-status-tag ' +
-                            (currentAiResult.seller_protection.signature_confirmation.status === 'SATISFIED'
-                              ? 'pill-pass'
-                              : currentAiResult.seller_protection.signature_confirmation.status === 'NOT_REQUIRED'
-                              ? 'pill-pass'
-                              : currentAiResult.seller_protection.signature_confirmation.status === 'MERCHANT_ATTESTED_UNVERIFIED'
-                              ? 'pill-warn'
-                              : 'pill-blocked')
-                          }
-                        >
-                          {currentAiResult.seller_protection.signature_confirmation.status === 'SATISFIED'
-                            ? 'CARRIER VERIFIED'
-                            : currentAiResult.seller_protection.signature_confirmation.status === 'MERCHANT_ATTESTED_UNVERIFIED'
-                            ? 'ATTESTED (UNVERIFIED)'
-                            : currentAiResult.seller_protection.signature_confirmation.status === 'NOT_REQUIRED'
-                            ? 'NOT REQUIRED'
-                            : 'MISSING REQUIRED'}
+                        <small>SHIPMENT DATE</small>
+                        <span className={'matrix-status-tag ' + (currentAiResult.evidence_checks.shipment_date_recorded ? 'pill-pass' : 'pill-blocked')}>
+                          {currentAiResult.evidence_checks.shipment_date_recorded ? 'RECORDED' : 'MISSING'}
                         </span>
-                        <p>
-                          {currentAiResult.seller_protection.signature_confirmation.required
-                            ? currentAiResult.seller_protection.signature_confirmation.status === 'SATISFIED'
-                              ? 'Carrier delivery log documents verified recipient signature.'
-                              : currentAiResult.seller_protection.signature_confirmation.status === 'MERCHANT_ATTESTED_UNVERIFIED'
-                              ? 'Merchant noted signature on file, but carrier tracking has not confirmed it independently.'
-                              : 'Mandatory for transactions >= $750.00 USD under PayPal Seller Protection policy.'
-                            : 'Standard value (< $750); signature confirmation optional.'}
-                        </p>
+                        <p>A shipment date is entered in the record.</p>
                       </div>
-
                       <div className="matrix-item">
-                        <small>POLICY DATE APPLICABILITY</small>
-                        <span
-                          className={
-                            'matrix-status-tag ' +
-                            (currentAiResult.seller_protection.signature_confirmation.policy_applicability === 'CONFIRMED'
-                              ? 'pill-pass'
-                              : currentAiResult.seller_protection.signature_confirmation.policy_applicability === 'PRE_POLICY'
-                              ? 'pill-unchecked'
-                              : 'pill-warn')
-                          }
-                        >
-                          {currentAiResult.seller_protection.signature_confirmation.policy_applicability === 'CONFIRMED'
-                            ? 'POLICY APPLIES'
-                            : currentAiResult.seller_protection.signature_confirmation.policy_applicability === 'PRE_POLICY'
-                            ? 'PRE-POLICY DATE'
-                            : 'DATE MISSING'}
+                        <small>DELIVERY STATUS + DATE</small>
+                        <span className={'matrix-status-tag ' + (currentAiResult.evidence_checks.delivered_status_and_date_recorded ? 'pill-pass' : 'pill-warn')}>
+                          {currentAiResult.evidence_checks.delivered_status_and_date_recorded ? 'ENTERED AS DELIVERED' : 'NOT RECORDED'}
                         </span>
-                        <p>
-                          {currentAiResult.seller_protection.signature_confirmation.policy_applicability === 'CONFIRMED'
-                            ? `PayPal $750+ signature policy (eff. ${currentAiResult.seller_protection.signature_confirmation.policy_effective_date}) applies to this transaction.`
-                            : currentAiResult.seller_protection.signature_confirmation.policy_applicability === 'PRE_POLICY'
-                            ? `Transaction predates the $750+ policy (eff. ${currentAiResult.seller_protection.signature_confirmation.policy_effective_date}). Manual review recommended.`
-                            : 'Transaction processing date unavailable. Policy applicability requires manual review — provide transaction_date to confirm.'}
-                        </p>
+                        <p>Delivery details are not independently verified by a carrier feed.</p>
+                      </div>
+                      <div className="matrix-item">
+                        <small>DESTINATION TEXT</small>
+                        <span className={'matrix-status-tag ' + (currentAiResult.evidence_checks.destination_text_match ? 'pill-pass' : 'pill-warn')}>
+                          {currentAiResult.evidence_checks.destination_text_match ? 'TEXT MATCH' : 'NOT MATCHED'}
+                        </span>
+                        <p>A text match is not proof that the carrier delivered to the transaction address.</p>
+                      </div>
+                      <div className="matrix-item">
+                        <small>EXCEPTION KEYWORDS</small>
+                        <span className={'matrix-status-tag ' + (currentAiResult.evidence_checks.exception_phrases_found?.length ? 'pill-warn' : 'pill-unchecked')}>
+                          {currentAiResult.evidence_checks.exception_phrases_found?.length ? 'REVIEW' : 'NONE FOUND'}
+                        </span>
+                        <p>Keyword matches in notes need confirmation against the carrier's official tracking record.</p>
                       </div>
                     </div>
                     <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '8px' }}>
-                      * Evidence quality assessment only. Official Seller Protection eligibility is adjudicated exclusively by PayPal during dispute review.
+                      {currentAiResult.evidence_checks.source_notice}
+                    </p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '4px' }}>
+                      {currentAiResult.paypal_notice}
                     </p>
                   </div>
 
                   <div className="remediation-box">
                     <h4>Interactive Evidence Remediation Sandbox</h4>
                     <p>
-                      Update carrier delivery notes, tracking numbers, or order details to test real-time recalculation of your protection readiness:
+                      Update merchant-entered tracking, delivery notes, or order details to test recalculation of the shipment record checks:
                     </p>
 
                     <div className="interactive-form-grid">
@@ -1107,7 +1073,7 @@ function ShipmentReviewMain({
   batchValidateLoading,
   readyChecksCount,
   blockedCount,
-  protectionReadyCount,
+  evidenceCompleteCount,
   validationRun,
   aiAnalysisRun,
   testPayPalConnection,
@@ -1249,7 +1215,7 @@ function ShipmentReviewMain({
         </div>
         <div className="stat-card">
           <span>PROTECTION READY</span>
-          <strong className="green">{aiAnalysisRun ? protectionReadyCount.toString().padStart(2, '0') : 'Not evaluated'}</strong>
+          <strong className="green">{aiAnalysisRun ? evidenceCompleteCount.toString().padStart(2, '0') : 'Not evaluated'}</strong>
           <small>Full Seller Protection defense viability</small>
         </div>
       </section>
@@ -1304,11 +1270,11 @@ function ShipmentReviewMain({
           </button>
           <button
             role="tab"
-            aria-selected={activeTab === 'protection-ready'}
-            className={`filter-tab ${activeTab === 'protection-ready' ? 'active' : ''}`}
-            onClick={() => setActiveTab('protection-ready')}
+            aria-selected={activeTab === 'evidence-complete'}
+            className={`filter-tab ${activeTab === 'evidence-complete' ? 'active' : ''}`}
+            onClick={() => setActiveTab('evidence-complete')}
           >
-            Protection Ready <span>{aiAnalysisRun ? protectionReadyCount : 'Not evaluated'}</span>
+            Evidence Complete <span>{aiAnalysisRun ? evidenceCompleteCount : 'Not evaluated'}</span>
           </button>
           <button
             role="tab"
@@ -1348,7 +1314,7 @@ function ShipmentReviewMain({
             const result = results[order.order_id]
             const status = result?.result
             const ai = aiResults[order.order_id]
-            const scoreClass = ai?.readiness_score >= 85 ? 'high' : ai?.readiness_score >= 70 ? 'med' : 'low'
+            const scoreClass = ai?.evidence_score >= 85 ? 'high' : ai?.evidence_score >= 70 ? 'med' : 'low'
 
             return (
               <article className="order-card" key={order.order_id}>
@@ -1372,8 +1338,8 @@ function ShipmentReviewMain({
                   </div>
                   <div className="status-badges">
                     {ai && !ai.loading && !ai.error && (
-                      <span className={`score-chip ${scoreClass}`} title={ai.readiness_label}>
-                        AI Score: {ai.readiness_score}/100
+                      <span className={`score-chip ${scoreClass}`} title={ai.evidence_label}>
+                        Evidence Score: {ai.evidence_score}/100
                       </span>
                     )}
                     <span
