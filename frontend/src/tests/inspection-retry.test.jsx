@@ -26,6 +26,7 @@ const jsonResponse = (data, status = 200) => ({
   ok: status >= 200 && status < 300,
   status,
   json: async () => data,
+  text: async () => JSON.stringify(data),
 })
 
 function setupPackingStation(inspectionResponses) {
@@ -81,6 +82,7 @@ describe('AI inspection retry behavior', () => {
       jsonResponse({ detail: 'Gemini service is temporarily unavailable' }, 503),
       jsonResponse({
         id: 'inspection-1',
+        inspection_id: 'inspection-1',
         inspection_status: 'PENDING_HUMAN_REVIEW',
         photo_count: 1,
         model_used: 'gemini-flash-latest',
