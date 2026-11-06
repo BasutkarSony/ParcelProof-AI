@@ -2497,7 +2497,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                           onClick={handleSubmitInspection}
                           style={{ marginTop: '10px', padding: '8px 14px', fontSize: '12px' }}
                         >
-                          {lastInspectionStatus === 429 ? 'Retry after quota reset' : 'Retry Inspection'}
+                          {lastInspectionStatus === 429 ? 'Retry after limit resets' : 'Retry Inspection'}
                         </button>
                       )}
                     </div>
