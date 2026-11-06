@@ -85,7 +85,7 @@ describe('AI inspection retry behavior', () => {
         inspection_id: 'inspection-1',
         inspection_status: 'PENDING_HUMAN_REVIEW',
         photo_count: 1,
-        model_used: 'gemini-flash-latest',
+        model_used: 'gemini-3.8-flash',
       }, 201),
     ])
 
@@ -98,6 +98,30 @@ describe('AI inspection retry behavior', () => {
 
     expect(await screen.findByText(/AI Packing Inspection Completed/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Retry Inspection' })).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2)
+  })
+
+  it('labels HTTP 429 as a quota/rate-limit retry and succeeds after the user retries', async () => {
+    const fetchMock = setupPackingStation([
+      jsonResponse({ detail: 'Gemini rate limit or quota was reached (HTTP 429). Wait for the quota reset.' }, 429),
+      jsonResponse({
+        id: 'inspection-2',
+        inspection_id: 'inspection-2',
+        inspection_status: 'PENDING_HUMAN_REVIEW',
+        photo_count: 1,
+        model_used: 'gemini-3.8-flash',
+      }, 201),
+    ])
+
+    expect(await screen.findByText('Packing Station & AI Vision Inspection')).toBeInTheDocument()
+    await selectPhoto()
+    fireEvent.click(screen.getByRole('button', { name: /Run AI Vision Inspection/ }))
+
+    expect(await screen.findByText(/HTTP 429/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry after quota reset' }))
+
+    expect(await screen.findByText(/AI Packing Inspection Completed/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry after quota reset' })).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2)
   })
 
