@@ -63,7 +63,9 @@ Finalization locks the manifest against normal edits. Check quantities and descr
 5. Review the selected photo thumbnails/count, then choose **Run AI Vision Inspection**.
 6. Wait for the inspection result. If a temporary provider error offers **Retry Inspection**, retry only after checking the message. Validation errors such as an unfinalized manifest are not retryable; fix the underlying issue first.
 
-Gemini Vision is the primary provider. If configured and Gemini remains unavailable after its bounded retry, OpenAI Vision can be used as a fallback. If neither provider is configured or available, the inspection cannot complete.
+Gemini Vision is the primary provider. It currently uses the configured `gemini-3.8-flash` model and makes one bounded retry for transient provider errors. HTTP 503 indicates temporary service unavailability/overload; HTTP 429 indicates a rate or quota limit. Repeated retries do not fix an exhausted quota. The optional OpenAI Vision fallback is used only when `OPENAI_API_KEY` is configured; it is not configured in the current hosted demo.
+
+**Evidence retention on provider failure:** the backend now records a non-approvable `AI_FAILED` attempt with the manifest fingerprint, photo hashes and saved photo references when the database write succeeds. It does not delete the uploaded photos just because the AI service is unavailable. An `AI_FAILED` attempt cannot be approved and cannot unlock PayPal tracking. When the UI offers retry after a temporary 503, submit the same selected original photos again to create a new attempt; the failed attempt remains in history. This recovery behavior is covered by automated tests, but still needs a fresh end-to-end hosted Storage verification.
 
 AI output is an observation aid, not an approval. The model can miss items or report incorrect findings. A photograph of a sealed parcel cannot establish the parcel's contents.
 
