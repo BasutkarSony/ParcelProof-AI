@@ -6,7 +6,7 @@ from pathlib import Path
 from decimal import Decimal
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.validator import validate_order
@@ -15,6 +15,11 @@ from app.reconciliation import (
     ReconciliationInputError,
     ReconciliationPreconditionError,
     reconcile_order_document,
+)
+from app.document_extractor import (
+    DocumentExtractionError, DocumentValidationError, MAX_DOCUMENT_BYTES,
+    extract_export_document, sha256_document, validate_confirmed_document,
+    validate_document_bytes,
 )
 from app import object_storage
 from app.paypal_client import (
@@ -49,6 +54,13 @@ from app.store import (
     get_shipment_by_checkout_order_id,
     list_shipments,
     update_shipment,
+    create_shipment_document,
+    get_shipment_document,
+    list_shipment_documents,
+    update_shipment_document_extraction,
+    confirm_shipment_document,
+    create_reconciliation_run,
+    list_reconciliation_runs,
 )
 app = FastAPI(
     title="ParcelProof AI API",
@@ -811,40 +823,190 @@ def get_shipment_manifest(shipment_order_id: str):
     return manifest
 
 
+def _document_api_record(document: dict) -> dict:
+    """Expose document metadata without the private storage object path."""
+    return {
+        "document_id": document["id"],
+        "shipment_order_id": document["shipment_order_id"],
+        "document_type": document["document_type"],
+        "document_status": document["document_status"],
+        "extraction_status": document["extraction_status"],
+        "original_filename": document["original_filename"],
+        "mime_type": document["mime_type"],
+        "size_bytes": document["size_bytes"],
+        "sha256": document["sha256"],
+        "extracted_data": document.get("extracted_data"),
+        "confirmed_data": document.get("confirmed_data"),
+        "extraction_provider": document.get("extraction_provider"),
+        "extraction_error": document.get("extraction_error"),
+        "reviewer_label": document.get("reviewer_label"),
+        "confirmed_at": document.get("confirmed_at"),
+        "created_at": document.get("created_at"),
+    }
+
+
+@app.post("/api/shipments/{shipment_order_id}/documents", status_code=201)
+async def upload_shipment_document(
+    shipment_order_id: str,
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+):
+    shipment = get_shipment_by_order_id(shipment_order_id)
+    if shipment is None:
+        raise HTTPException(status_code=404, detail="A persisted shipment is required.")
+    if not shipment.get("checkout_order_id"):
+        raise HTTPException(status_code=409, detail="Sample shipments cannot store export documents.")
+    document_type = str(document_type or "").strip().upper()
+    if document_type not in {"COMMERCIAL_INVOICE", "PACKING_LIST"}:
+        raise HTTPException(status_code=422, detail="Choose COMMERCIAL_INVOICE or PACKING_LIST.")
+
+    raw_bytes = await file.read(MAX_DOCUMENT_BYTES + 1)
+    try:
+        mime_type = validate_document_bytes(raw_bytes)
+    except DocumentValidationError as exc:
+        status = 413 if len(raw_bytes) > MAX_DOCUMENT_BYTES else 415
+        raise HTTPException(status_code=status, detail=str(exc)) from None
+
+    from uuid import uuid4
+    filename = str(file.filename or "export-document").replace("\\", "/").split("/")[-1][:180]
+    extension = {"application/pdf": ".pdf", "image/jpeg": ".jpg",
+                 "image/png": ".png", "image/webp": ".webp"}[mime_type]
+    storage_path = f"{shipment_order_id}/documents/{uuid4()}{extension}"
+    bucket = os.getenv("SUPABASE_DOCUMENTS_BUCKET", "shipment-documents").strip()
+    try:
+        object_storage.upload_private_object(storage_path, raw_bytes, mime_type, bucket_name=bucket)
+    except object_storage.StorageConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    except object_storage.StorageOperationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+    try:
+        document = create_shipment_document(
+            shipment_order_id, document_type=document_type, original_filename=filename,
+            mime_type=mime_type, size_bytes=len(raw_bytes),
+            sha256=sha256_document(raw_bytes), storage_path=storage_path,
+        )
+    except Exception:
+        try:
+            object_storage.delete_private_object(storage_path, bucket_name=bucket)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="The document metadata could not be saved.") from None
+
+    try:
+        extraction = extract_export_document(raw_bytes, mime_type, document_type)
+    except DocumentExtractionError:
+        extraction = {
+            "status": "FAILED", "provider": "GEMINI", "data": None,
+            "message": "The original document is saved. AI extraction failed; enter fields manually.",
+        }
+    except DocumentValidationError as exc:
+        extraction = {"status": "FAILED", "provider": None, "data": None, "message": str(exc)}
+    updated = update_shipment_document_extraction(
+        document["id"], extraction_status=extraction["status"],
+        document_status="AWAITING_REVIEW", extracted_data=extraction.get("data"),
+        extraction_provider=extraction.get("provider"),
+        extraction_error=extraction["message"] if extraction["status"] == "FAILED" else None,
+    )
+    return {"document": _document_api_record(updated), "message": extraction["message"]}
+
+
+@app.get("/api/shipments/{shipment_order_id}/documents")
+def list_shipment_export_documents(shipment_order_id: str):
+    if get_shipment_by_order_id(shipment_order_id) is None:
+        raise HTTPException(status_code=404, detail="Shipment not found.")
+    return {"shipment_order_id": shipment_order_id,
+            "documents": [_document_api_record(item) for item in list_shipment_documents(shipment_order_id)]}
+
+
+@app.get("/api/documents/{document_id}/file")
+def download_shipment_document(document_id: str):
+    document = get_shipment_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Export document not found.")
+    bucket = os.getenv("SUPABASE_DOCUMENTS_BUCKET", "shipment-documents").strip()
+    try:
+        content = object_storage.download_private_object(document["storage_path"], bucket_name=bucket)
+    except object_storage.StorageConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    except object_storage.StorageOperationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+    filename = str(document["original_filename"]).replace('"', "")[:150]
+    return Response(
+        content=content, media_type=document["mime_type"],
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+                 "Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.put("/api/documents/{document_id}/confirm")
+def confirm_export_document(document_id: str, payload: dict):
+    document = get_shipment_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Export document not found.")
+    fields = payload.get("document") if isinstance(payload, dict) else None
+    try:
+        confirmed = validate_confirmed_document(fields, document["document_type"])
+        saved = confirm_shipment_document(
+            document_id, confirmed_data=confirmed,
+            reviewer_label=payload.get("reviewer_label", "Merchant"),
+        )
+    except (DocumentValidationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return _document_api_record(saved)
+
+
+@app.get("/api/shipments/{shipment_order_id}/reconciliations")
+def get_shipment_reconciliations(shipment_order_id: str):
+    if get_shipment_by_order_id(shipment_order_id) is None:
+        raise HTTPException(status_code=404, detail="Shipment not found.")
+    return {"shipment_order_id": shipment_order_id,
+            "reconciliations": list_reconciliation_runs(shipment_order_id)}
+
+
 @app.post("/api/shipments/{shipment_order_id}/reconcile")
 def reconcile_shipment_documents(shipment_order_id: str, payload: dict):
-    """Compare a normalized export document with a paid order and finalized manifest.
-
-    The upload/OCR step is deliberately separate: this endpoint only accepts
-    normalized fields and never treats unparsed file text as verified data.
-    """
+    """Compare confirmed export fields against the paid order and final manifest."""
     shipment = get_shipment_by_order_id(shipment_order_id)
     if shipment is None:
         raise HTTPException(status_code=404, detail="A persisted PayPal shipment is required.")
-    checkout_order_id = shipment.get("checkout_order_id")
-    if not checkout_order_id:
-        raise HTTPException(
-            status_code=409,
-            detail="Sample shipments cannot be reconciled against a PayPal checkout.",
-        )
-    order = get_order(checkout_order_id)
+    order_id = shipment.get("checkout_order_id")
+    if not order_id:
+        raise HTTPException(status_code=409, detail="Sample shipments cannot be reconciled against PayPal.")
+    order = get_order(order_id)
     if order is None:
         raise HTTPException(status_code=404, detail="The linked PayPal checkout order was not found.")
     manifest = get_manifest_for_shipment(shipment_order_id)
     if manifest is None:
         raise HTTPException(status_code=404, detail="Create a shipment manifest before reconciliation.")
-    document = payload.get("document") if isinstance(payload, dict) else None
-    if not isinstance(document, dict):
-        raise HTTPException(
-            status_code=422,
-            detail="Provide a normalized document object in the 'document' field.",
-        )
+
+    document_id = payload.get("document_id") if isinstance(payload, dict) else None
+    if document_id:
+        saved = get_shipment_document(str(document_id))
+        if saved is None:
+            raise HTTPException(status_code=404, detail="Export document not found.")
+        if saved.get("shipment_order_id") != shipment_order_id:
+            raise HTTPException(status_code=409, detail="The document belongs to a different shipment.")
+        if saved.get("document_status") != "CONFIRMED" or not isinstance(saved.get("confirmed_data"), dict):
+            raise HTTPException(status_code=409, detail="Confirm the document fields before reconciliation.")
+        document = saved["confirmed_data"]
+    else:
+        document = payload.get("document") if isinstance(payload, dict) else None
+        if not isinstance(document, dict):
+            raise HTTPException(status_code=422, detail="Provide a confirmed document_id or normalized document object.")
+
     try:
-        return reconcile_order_document(order, manifest, document)
+        result = reconcile_order_document(order, manifest, document)
     except ReconciliationPreconditionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     except ReconciliationInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    run = create_reconciliation_run(
+        shipment_order_id=shipment_order_id, order_id=order_id,
+        manifest_id=manifest["id"], document_id=str(document_id) if document_id else None,
+        result=result,
+    )
+    return {**result, "reconciliation_id": run["id"]}
 
 
 @app.get("/api/manifests/{manifest_id}")

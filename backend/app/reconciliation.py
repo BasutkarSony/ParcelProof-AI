@@ -491,10 +491,14 @@ def reconcile_order_document(order: dict, manifest: dict, document: dict) -> dic
                     sources=[{"record": "export_document", "id": document_ref, "field": f"items[{position}]"}],
                 )
                 continue
-            quantity = _quantity(item.get("quantity"), f"items[{position}].quantity")
+            raw_quantity = item.get("quantity")
+            quantity = None if raw_quantity in (None, "") else _quantity(raw_quantity, f"items[{position}].quantity")
             if key not in observed_by_key:
-                observed_by_key[key] = {"quantity": 0, "rows": [], "unit_amount": item.get("unit_amount")}
-            observed_by_key[key]["quantity"] += quantity
+                observed_by_key[key] = {"quantity": 0, "quantity_unknown": False, "rows": [], "unit_amount": item.get("unit_amount")}
+            if quantity is None:
+                observed_by_key[key]["quantity_unknown"] = True
+            elif not observed_by_key[key]["quantity_unknown"]:
+                observed_by_key[key]["quantity"] += quantity
             observed_by_key[key]["rows"].append(position)
 
         for key, expected in expected_by_key.items():
@@ -517,20 +521,33 @@ def reconcile_order_document(order: dict, manifest: dict, document: dict) -> dic
                     ],
                 )
                 continue
-            _compare(
-                checks,
-                code="DOCUMENT_ITEM_QUANTITY_MATCH",
-                field=f"quantity for {item_label}",
-                expected=expected["quantity"],
-                observed=observed["quantity"],
-                severity="BLOCKER",
-                message=f"Document quantity matches the paid order for {item_label}.",
-                recommended_action="Correct the document quantity or investigate the order discrepancy.",
-                sources=[
-                    {"record": "paypal_order", "id": order_ref, "field": "items"},
-                    {"record": "export_document", "id": document_ref, "field": f"items[{','.join(map(str, observed['rows']))}].quantity"},
-                ],
-            )
+            if observed.get("quantity_unknown"):
+                _check(
+                    checks, code="DOCUMENT_ITEM_QUANTITY_MATCH", status="NOT_CHECKED",
+                    severity="REVIEW", field=f"quantity for {item_label}",
+                    expected=expected["quantity"], observed=None,
+                    message=f"The quantity for {item_label} could not be read confidently from the document.",
+                    recommended_action="Check the original document and enter the printed quantity.",
+                    sources=[
+                        {"record": "paypal_order", "id": order_ref, "field": "items"},
+                        {"record": "export_document", "id": document_ref, "field": f"items[{','.join(map(str, observed['rows']))}].quantity"},
+                    ],
+                )
+            else:
+                _compare(
+                    checks,
+                    code="DOCUMENT_ITEM_QUANTITY_MATCH",
+                    field=f"quantity for {item_label}",
+                    expected=expected["quantity"],
+                    observed=observed["quantity"],
+                    severity="BLOCKER",
+                    message=f"Document quantity matches the paid order for {item_label}.",
+                    recommended_action="Correct the document quantity or investigate the order discrepancy.",
+                    sources=[
+                        {"record": "paypal_order", "id": order_ref, "field": "items"},
+                        {"record": "export_document", "id": document_ref, "field": f"items[{','.join(map(str, observed['rows']))}].quantity"},
+                    ],
+                )
             if document_type == "COMMERCIAL_INVOICE" and observed.get("unit_amount") not in (None, ""):
                 expected_unit = _money(expected.get("unit_price"), "order item unit_price")
                 observed_unit = _money(observed.get("unit_amount"), "items.unit_amount")

@@ -236,6 +236,41 @@ def init_db() -> None:
                 ON shipments(checkout_order_id);
             CREATE INDEX IF NOT EXISTS idx_shipments_paypal_capture_id
                 ON shipments(paypal_capture_id);
+            CREATE TABLE IF NOT EXISTS shipment_documents (
+                id TEXT PRIMARY KEY,
+                shipment_order_id TEXT NOT NULL REFERENCES shipments(order_id) ON DELETE CASCADE,
+                document_type TEXT NOT NULL,
+                document_status TEXT NOT NULL DEFAULT 'STORED',
+                extraction_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+                original_filename TEXT NOT NULL,
+                mime_type TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                storage_path TEXT NOT NULL,
+                extracted_data TEXT,
+                confirmed_data TEXT,
+                extraction_provider TEXT,
+                extraction_error TEXT,
+                reviewer_label TEXT,
+                confirmed_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_shipment_documents_shipment
+                ON shipment_documents(shipment_order_id, created_at);
+            CREATE TABLE IF NOT EXISTS reconciliation_runs (
+                id TEXT PRIMARY KEY,
+                shipment_order_id TEXT NOT NULL REFERENCES shipments(order_id) ON DELETE CASCADE,
+                order_id TEXT NOT NULL REFERENCES orders(id),
+                manifest_id TEXT NOT NULL REFERENCES shipment_manifests(id),
+                document_id TEXT REFERENCES shipment_documents(id),
+                overall_status TEXT NOT NULL,
+                engine_version TEXT NOT NULL,
+                result TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_reconciliation_runs_shipment
+                ON reconciliation_runs(shipment_order_id, created_at);
             """
         )
         # Add columns to databases created by earlier versions without
@@ -1501,5 +1536,186 @@ def update_shipment(order_id: str, **updates) -> dict:
         with conn:
             conn.execute(sql, tuple(vals))
         return get_shipment_by_order_id(order_id)
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Export document records and reconciliation history
+# ---------------------------------------------------------------------------
+
+def _document_row(row) -> dict:
+    record = dict(row)
+    for field in ("extracted_data", "confirmed_data"):
+        raw = record.get(field)
+        if raw:
+            try:
+                record[field] = json.loads(raw)
+            except (TypeError, ValueError):
+                record[field] = None
+        else:
+            record[field] = None
+    return record
+
+
+def create_shipment_document(shipment_order_id: str, *, document_type: str,
+                             original_filename: str, mime_type: str, size_bytes: int,
+                             sha256: str, storage_path: str) -> dict:
+    document_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _connect()
+    try:
+        exists = conn.execute("SELECT order_id FROM shipments WHERE order_id = ?", (shipment_order_id,)).fetchone()
+        if exists is None:
+            raise ValueError("A persisted shipment is required for document storage.")
+        conn.execute(
+            """INSERT INTO shipment_documents
+            (id, shipment_order_id, document_type, document_status, extraction_status,
+             original_filename, mime_type, size_bytes, sha256, storage_path, created_at, updated_at)
+            VALUES (?, ?, ?, 'STORED', 'NOT_STARTED', ?, ?, ?, ?, ?, ?, ?)""",
+            (document_id, shipment_order_id, document_type, original_filename,
+             mime_type, size_bytes, sha256, storage_path, now, now),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return get_shipment_document(document_id)
+
+
+def get_shipment_document(document_id: str) -> dict | None:
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT * FROM shipment_documents WHERE id = ?", (document_id,)).fetchone()
+        return _document_row(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_shipment_documents(shipment_order_id: str) -> list[dict]:
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM shipment_documents WHERE shipment_order_id = ? ORDER BY created_at DESC, id DESC",
+            (shipment_order_id,),
+        ).fetchall()
+        return [_document_row(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def update_shipment_document_extraction(document_id: str, *, extraction_status: str,
+                                        document_status: str, extracted_data: dict | None = None,
+                                        extraction_provider: str | None = None,
+                                        extraction_error: str | None = None) -> dict:
+    if extraction_status not in {"NOT_CONFIGURED", "EXTRACTED", "FAILED"}:
+        raise ValueError("Unsupported document extraction state.")
+    if document_status not in {"STORED", "AWAITING_REVIEW"}:
+        raise ValueError("Unsupported document state.")
+    conn = _connect()
+    try:
+        cursor = conn.execute(
+            """UPDATE shipment_documents
+            SET extraction_status = ?, document_status = ?, extracted_data = ?,
+                extraction_provider = ?, extraction_error = ?, updated_at = ?
+            WHERE id = ?""",
+            (extraction_status, document_status,
+             json.dumps(extracted_data, ensure_ascii=False) if extracted_data is not None else None,
+             extraction_provider, extraction_error, datetime.now(timezone.utc).isoformat(), document_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f"Export document not found: {document_id}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return get_shipment_document(document_id)
+
+
+def confirm_shipment_document(document_id: str, *, confirmed_data: dict, reviewer_label: str) -> dict:
+    reviewer_label = str(reviewer_label or "").strip()
+    if not reviewer_label or len(reviewer_label) > 100:
+        raise ValueError("Enter a reviewer label (up to 100 characters).")
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT id FROM shipment_documents WHERE id = ?", (document_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"Export document not found: {document_id}")
+        conn.execute(
+            """UPDATE shipment_documents
+            SET confirmed_data = ?, reviewer_label = ?, confirmed_at = ?,
+                document_status = 'CONFIRMED', updated_at = ? WHERE id = ?""",
+            (json.dumps(confirmed_data, ensure_ascii=False), reviewer_label, now, now, document_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return get_shipment_document(document_id)
+
+
+def create_reconciliation_run(*, shipment_order_id: str, order_id: str, manifest_id: str,
+                              document_id: str | None, result: dict) -> dict:
+    run_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _connect()
+    try:
+        conn.execute(
+            """INSERT INTO reconciliation_runs
+            (id, shipment_order_id, order_id, manifest_id, document_id,
+             overall_status, engine_version, result, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (run_id, shipment_order_id, order_id, manifest_id, document_id,
+             result.get("overall_status", "REVIEW_REQUIRED"),
+             result.get("engine_version", "unknown"), json.dumps(result, ensure_ascii=False), now),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return get_reconciliation_run(run_id)
+
+
+def get_reconciliation_run(run_id: str) -> dict | None:
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT * FROM reconciliation_runs WHERE id = ?", (run_id,)).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        try:
+            record["result"] = json.loads(record["result"])
+        except (TypeError, ValueError):
+            record["result"] = None
+        return record
+    finally:
+        conn.close()
+
+
+def list_reconciliation_runs(shipment_order_id: str) -> list[dict]:
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM reconciliation_runs WHERE shipment_order_id = ? ORDER BY created_at DESC, id DESC",
+            (shipment_order_id,),
+        ).fetchall()
+        records = []
+        for row in rows:
+            record = dict(row)
+            try:
+                record["result"] = json.loads(record["result"])
+            except (TypeError, ValueError):
+                record["result"] = None
+            records.append(record)
+        return records
     finally:
         conn.close()

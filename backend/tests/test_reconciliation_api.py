@@ -29,11 +29,12 @@ class ReconciliationApiTests(unittest.TestCase):
         self.payload = {"document": {"document_type": "PACKING_LIST", "items": []}}
 
     @patch("app.main.reconcile_order_document", return_value={"overall_status": "MATCHED_FOR_CHECKED_FIELDS"})
+    @patch("app.main.create_reconciliation_run", return_value={"id": "run-1"})
     @patch("app.main.get_manifest_for_shipment")
     @patch("app.main.get_order")
     @patch("app.main.get_shipment_by_order_id")
     def test_endpoint_reconciles_the_order_linked_to_selected_shipment(
-        self, get_shipment, get_order, get_manifest, reconcile
+        self, get_shipment, get_order, get_manifest, create_run, reconcile
     ):
         get_shipment.return_value = self.shipment
         get_order.return_value = self.order
@@ -42,6 +43,8 @@ class ReconciliationApiTests(unittest.TestCase):
         result = api.reconcile_shipment_documents("SHP-1", self.payload)
 
         self.assertEqual(result["overall_status"], "MATCHED_FOR_CHECKED_FIELDS")
+        self.assertEqual(result["reconciliation_id"], "run-1")
+        create_run.assert_called_once()
         reconcile.assert_called_once_with(self.order, self.manifest, self.payload["document"])
         get_order.assert_called_once_with("order-1")
         get_manifest.assert_called_once_with("SHP-1")
