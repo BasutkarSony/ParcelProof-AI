@@ -1,4 +1,5 @@
 import asyncio
+from io import BytesIO
 import os
 import sys
 import tempfile
@@ -8,7 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 
 import app.store as store
 from app.store import (
@@ -23,6 +24,7 @@ from app.store import (
     get_inspection,
     get_shipment_by_order_id,
 )
+from app.packing_inspector import GeminiUnavailableError
 from app.main import (
     review_packing_inspection,
     submit_shipment_tracking,
@@ -92,6 +94,35 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
                 }
             ],
         )
+
+    def test_ai_provider_failure_preserves_uploaded_photo_evidence(self):
+        with tempfile.TemporaryDirectory() as photo_dir:
+            upload = UploadFile(
+                filename="packing-proof.jpg",
+                file=BytesIO(b"\\xff\\xd8\\xff" + b"test-image-data"),
+            )
+            with patch("app.packing_inspector.PHOTO_DIR", Path(photo_dir)):
+                with patch.dict(os.environ, {"SUPABASE_URL": ""}):
+                    with patch(
+                        "app.main.run_inspection",
+                        side_effect=GeminiUnavailableError("Gemini temporarily unavailable"),
+                    ):
+                        with self.assertRaises(HTTPException) as ctx:
+                            asyncio.run(
+                                create_packing_inspection(self.manifest["id"], [upload])
+                            )
+
+            self.assertEqual(ctx.exception.status_code, 503)
+            self.assertIn("preserved as failed inspection", ctx.exception.detail)
+
+            inspections = store.list_inspections_for_manifest(self.manifest["id"])
+            failed = inspections[0]
+            self.assertEqual(failed["inspection_status"], "AI_FAILED")
+            self.assertEqual(failed["ai_result"]["inspection_state"], "AI_FAILED")
+            self.assertTrue(failed["ai_result"]["retry_available"])
+            self.assertEqual(len(failed["photos"]), 1)
+            saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
+            self.assertTrue(saved_photo.is_file())
 
     def test_human_decision_is_persisted_without_changing_ai_result(self):
         result = review_packing_inspection(
