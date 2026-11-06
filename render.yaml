@@ -2,19 +2,27 @@ services:
   - type: web
     name: parcelproof-ai
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeployTrigger: checksPass
-    disk:
-      name: parcelproof-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
-      - key: PARCELPROOF_DATA_DIR
-        value: /var/data
+      - key: PARCELPROOF_REQUIRE_DATABASE
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSLMODE
+        value: require
+      - key: SUPABASE_URL
+        value: https://tsdxskfgpvykjuhrjvve.supabase.co
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: inspection-photos
       - key: FRONTEND_URL
         fromService:
           name: parcelproof-ai
