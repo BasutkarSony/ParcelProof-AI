@@ -854,13 +854,20 @@ def update_manifest(manifest_id: str, items: list[dict], notes: str | None = Non
 
     conn = _connect()
     try:
-        row = conn.execute(
-            """
-            SELECT status, shipment_order_id
-            FROM shipment_manifests WHERE id = ?
-            """,
-            (manifest_id,),
-        ).fetchone()
+        if _uses_postgres():
+            row = conn.execute(
+                "SELECT status, shipment_order_id FROM shipment_manifests WHERE id = ? FOR UPDATE",
+                (manifest_id,),
+            ).fetchone()
+        else:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                """
+                SELECT status, shipment_order_id
+                FROM shipment_manifests WHERE id = ?
+                """,
+                (manifest_id,),
+            ).fetchone()
         if row is None:
             raise ValueError(f"Manifest not found: {manifest_id}")
         if row["status"] != "DRAFT":
@@ -917,9 +924,17 @@ def finalize_manifest(manifest_id: str) -> dict:
     """
     conn = _connect()
     try:
-        row = conn.execute(
-            "SELECT status FROM shipment_manifests WHERE id = ?", (manifest_id,)
-        ).fetchone()
+        if _uses_postgres():
+            row = conn.execute(
+                "SELECT status FROM shipment_manifests WHERE id = ? FOR UPDATE",
+                (manifest_id,),
+            ).fetchone()
+        else:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT status FROM shipment_manifests WHERE id = ?",
+                (manifest_id,),
+            ).fetchone()
         if row is None:
             raise ValueError(f"Manifest not found: {manifest_id}")
         if row["status"] == "FINALIZED":
@@ -943,10 +958,15 @@ def finalize_manifest(manifest_id: str) -> dict:
                 """
                 UPDATE shipment_manifests
                 SET status = 'FINALIZED', manifest_hash = ?, updated_at = ?
-                WHERE id = ?
+                WHERE id = ? AND status = 'DRAFT'
                 """,
                 (digest, now, manifest_id),
             )
+            if conn.execute(
+                "SELECT status FROM shipment_manifests WHERE id = ?",
+                (manifest_id,),
+            ).fetchone()["status"] != "FINALIZED":
+                raise ValueError(f"Manifest {manifest_id} was changed while finalizing.")
     finally:
         conn.close()
 
