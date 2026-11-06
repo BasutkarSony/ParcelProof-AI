@@ -13,6 +13,7 @@ class SupabasePrivateStorageTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "SUPABASE_URL": "https://example.supabase.co",
             "SUPABASE_SECRET_KEY": "sb_secret_test-secret",
+            "SUPABASE_SERVICE_ROLE_KEY": "eyJ.legacy.service-role.jwt",
             "SUPABASE_STORAGE_BUCKET": "inspection-photos",
         })
         self.env.start()
@@ -31,7 +32,10 @@ class SupabasePrivateStorageTests(unittest.TestCase):
             "https://example.supabase.co/storage/v1/object/inspection-photos/inspection-1/photo-1.jpg",
         )
         self.assertEqual(kwargs["headers"]["apikey"], "sb_secret_test-secret")
-        self.assertNotIn("Authorization", kwargs["headers"])
+        self.assertEqual(
+            kwargs["headers"]["Authorization"],
+            "Bearer eyJ.legacy.service-role.jwt",
+        )
         self.assertEqual(kwargs["headers"]["x-upsert"], "false")
         self.assertEqual(kwargs["data"], b"image-bytes")
 
@@ -56,9 +60,24 @@ class SupabasePrivateStorageTests(unittest.TestCase):
         delete.assert_called_once()
 
     def test_missing_configuration_fails_closed(self):
-        with patch.dict(os.environ, {"SUPABASE_URL": "", "SUPABASE_SECRET_KEY": ""}):
+        with patch.dict(os.environ, {
+            "SUPABASE_URL": "",
+            "SUPABASE_SECRET_KEY": "",
+            "SUPABASE_SERVICE_ROLE_KEY": "",
+        }):
             with self.assertRaises(object_storage.StorageConfigurationError):
                 object_storage.download_private_object("inspection/photo.jpg")
+
+    def test_new_secret_key_requires_legacy_storage_service_jwt(self):
+        with patch.dict(os.environ, {"SUPABASE_SERVICE_ROLE_KEY": ""}):
+            with self.assertRaises(object_storage.StorageConfigurationError):
+                object_storage.download_private_object("inspection/photo.jpg")
+
+    def test_legacy_service_role_jwt_can_fill_both_credentials(self):
+        with patch.dict(os.environ, {"SUPABASE_SECRET_KEY": ""}):
+            config = object_storage._configuration()
+        self.assertEqual(config[1], "eyJ.legacy.service-role.jwt")
+        self.assertEqual(config[2], "eyJ.legacy.service-role.jwt")
 
     def test_object_path_rejects_traversal(self):
         with self.assertRaises(ValueError):
