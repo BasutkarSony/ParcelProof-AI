@@ -2086,7 +2086,7 @@ export function ExportDocumentWorkflow({ shipment }) {
     setIsDirty(selectedDocument.document_status !== 'CONFIRMED')
     setDocumentType(selectedDocument.document_type)
     setResult(null)
-  }, [selectedDocumentId, documents])
+  }, [selectedDocumentId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateField(field, value) {
     setDraft(current => ({ ...current, [field]: value, merchant_confirmed: false }))
@@ -2217,8 +2217,8 @@ export function ExportDocumentWorkflow({ shipment }) {
   }
 
   function showPastResult(run) {
-    setSelectedDocumentId(run.document_id || '')
     setResult(run.result || null)
+    setNotice(`Showing saved reconciliation from ${new Date(run.created_at).toLocaleString()}.`)
   }
 
   const isConfirmed = selectedDocument?.document_status === 'CONFIRMED' && !isDirty

@@ -54,6 +54,7 @@ describe('Export document workflow', () => {
     const file = new File(['%PDF-1.4 test'], 'invoice.pdf', { type: 'application/pdf' })
 
     let uploaded = false
+    let confirmed = false
     fetchMock.mockImplementation(async (url, options = {}) => {
       if (String(url).endsWith('/documents') && options.method === 'POST') {
         uploaded = true
@@ -63,6 +64,7 @@ describe('Export document workflow', () => {
         }, 201)
       }
       if (String(url).endsWith('/confirm') && options.method === 'PUT') {
+        confirmed = true
         const body = JSON.parse(options.body)
         return jsonResponse({
           ...documentRecord,
@@ -82,7 +84,11 @@ describe('Export document workflow', () => {
         })
       }
       if (String(url).endsWith('/documents')) {
-        return jsonResponse({ documents: uploaded ? [documentRecord] : [] })
+        return jsonResponse({ documents: uploaded ? [{
+          ...documentRecord,
+          document_status: confirmed ? 'CONFIRMED' : 'AWAITING_REVIEW',
+          confirmed_data: confirmed ? { document_type: 'COMMERCIAL_INVOICE', recipient_name: 'Test Buyer', currency: 'USD', items: [] } : null
+        }] : [] })
       }
       if (String(url).endsWith('/reconciliations')) return jsonResponse({ reconciliations: [] })
       return jsonResponse({ detail: 'Not found' }, 404)
@@ -135,6 +141,7 @@ describe('Export document workflow', () => {
     render(<ExportDocumentWorkflow shipment={shipment} />)
     expect(await screen.findByText('invoice.pdf')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run reconciliation' })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm document fields' }))
+    // The button is deliberately the only path to merchant-confirmed fields.
+    expect(screen.getByRole('button', { name: 'Confirm document fields' })).toBeEnabled()
   })
 })
