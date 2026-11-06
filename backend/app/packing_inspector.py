@@ -475,6 +475,24 @@ def _gemini_failure_message(exc: Exception) -> str:
             "Gemini rejected the inspection request (HTTP 400). The configured model "
             "or structured-output schema may not support this request."
         )
+    if code == 429 or "RESOURCE_EXHAUSTED" in status or "RESOURCE_EXHAUSTED" in message:
+        return (
+            "Gemini rate limit or quota was reached (HTTP 429) after one retry. "
+            "Check the Google AI project quota and usage window. Wait for a rate "
+            "window or quota reset before trying again; repeated retries will not "
+            "clear an exhausted quota."
+        )
+    if code == 503 or "UNAVAILABLE" in status or "UNAVAILABLE" in message:
+        return (
+            "Gemini service is temporarily unavailable or overloaded (HTTP 503) "
+            "after one retry. Wait for the provider to recover, then retry the "
+            "inspection. This is different from a quota limit."
+        )
+    if code in (500, 502, 504):
+        return (
+            f"Gemini returned a temporary provider error (HTTP {code}) after one retry. "
+            "Wait briefly for the service to recover, then retry the inspection."
+        )
     if code is not None:
         return f"Gemini inspection request failed with HTTP {code}."
     return (
@@ -639,15 +657,18 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
 
     if response is None:
         if final_error and _is_gemini_unavailable(final_error):
+            primary_diagnostic = _gemini_failure_message(final_error)
             if openai_key:
                 try:
                     return _run_openai_inspection(manifest, photo_metas, openai_key)
-                except RuntimeError:
+                except RuntimeError as fallback_error:
+                    safe_fallback_message = str(fallback_error).strip()[:300]
                     raise RuntimeError(
-                        "Gemini is temporarily unavailable and the configured OpenAI vision fallback also failed. Check the fallback model and API access, then retry."
+                        f"{primary_diagnostic} The optional OpenAI vision fallback also failed: "
+                        f"{safe_fallback_message}"
                     ) from None
             raise GeminiUnavailableError(
-                "Gemini service is temporarily unavailable after a retry (503/429). Add OPENAI_API_KEY to enable the optional vision fallback, or retry later."
+                f"{primary_diagnostic} OPENAI_API_KEY may be configured as an optional fallback."
             ) from None
         raise RuntimeError(_gemini_failure_message(final_error)) from None
 
