@@ -361,6 +361,7 @@ def create_order(
                 {
                     "id": str(uuid.uuid4()),
                     "order_id": order_id,
+                    "item_position": len(order_items),
                     "product_sku": sku,
                     "product_name": product["name"],
                     "quantity": quantity,
@@ -391,8 +392,8 @@ def create_order(
             conn.execute(
                 """
                 INSERT INTO order_items (id, order_id, product_sku, product_name,
-                                         quantity, unit_price_cents, line_total_cents, fragile)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                         quantity, unit_price_cents, line_total_cents, fragile, item_position)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     oi["id"],
@@ -403,6 +404,7 @@ def create_order(
                     oi["unit_price_cents"],
                     oi["line_total_cents"],
                     1 if oi["fragile"] else 0,
+                    oi["item_position"],
                 ),
             )
         conn.commit()
@@ -459,10 +461,11 @@ def get_order(order_id: str) -> dict | None:
             return None
         order = dict(row)
         items = conn.execute(
-            """
+            f"""
             SELECT id, product_sku, product_name, quantity, unit_price_cents,
                    line_total_cents, fragile
             FROM order_items WHERE order_id = ?
+            ORDER BY item_position, {("id" if _uses_postgres() else "rowid")}
             """,
             (order_id,),
         ).fetchall()
@@ -647,13 +650,13 @@ def create_manifest(shipment_order_id: str, items: list[dict], notes: str | None
                 """,
                 (manifest_id, shipment_order_id, notes or None, now, now),
             )
-            for item in items:
+            for position, item in enumerate(items):
                 conn.execute(
                     """
                     INSERT INTO manifest_items
                         (id, manifest_id, sku, description, expected_qty,
-                         unit_value_cents, fragile, source_order_item_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                         unit_value_cents, fragile, source_order_item_id, item_position)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(uuid.uuid4()),
@@ -666,6 +669,7 @@ def create_manifest(shipment_order_id: str, items: list[dict], notes: str | None
                         str(item["source_order_item_id"]).strip()
                         if item.get("source_order_item_id")
                         else None,
+                        position,
                     ),
                 )
     finally:
@@ -681,7 +685,10 @@ def create_manifest_from_checkout_order(shipment_order_id: str, checkout_order_i
     try:
         # Serialize concurrent retries so two capture callbacks cannot create
         # separate first manifests for the same paid checkout order.
-        conn.execute("BEGIN IMMEDIATE")
+        if _uses_postgres():
+            conn.execute("SELECT id FROM orders WHERE id = ? FOR UPDATE", (checkout_order_id,))
+        else:
+            conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute(
             """
             SELECT id FROM shipment_manifests
@@ -708,10 +715,11 @@ def create_manifest_from_checkout_order(shipment_order_id: str, checkout_order_i
             if not order or order["payment_status"] != "PAID":
                 raise ValueError("A manifest can only be generated from a paid checkout order.")
 
+            order_order = "item_position, id" if _uses_postgres() else "item_position, rowid"
             order_items = conn.execute(
-                """
+                f"""
                 SELECT id, product_sku, product_name, quantity, unit_price_cents, fragile
-                FROM order_items WHERE order_id = ? ORDER BY rowid
+                FROM order_items WHERE order_id = ? ORDER BY {order_order}
                 """,
                 (checkout_order_id,),
             ).fetchall()
@@ -743,13 +751,13 @@ def create_manifest_from_checkout_order(shipment_order_id: str, checkout_order_i
                     now,
                 ),
             )
-            for item in items:
+            for position, item in enumerate(items):
                 conn.execute(
                     """
                     INSERT INTO manifest_items
                         (id, manifest_id, sku, description, expected_qty,
-                         unit_value_cents, fragile, source_order_item_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                         unit_value_cents, fragile, source_order_item_id, item_position)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(uuid.uuid4()),
@@ -760,6 +768,7 @@ def create_manifest_from_checkout_order(shipment_order_id: str, checkout_order_i
                         item["unit_value_cents"],
                         1 if item.get("fragile") else 0,
                         item["source_order_item_id"],
+                        position,
                     ),
                 )
             conn.commit()
@@ -783,11 +792,11 @@ def get_manifest(manifest_id: str) -> dict | None:
             return None
         manifest = dict(row)
         item_rows = conn.execute(
-            """
+            f"""
             SELECT id, manifest_id, sku, description, expected_qty,
                    unit_value_cents, fragile, source_order_item_id
             FROM manifest_items WHERE manifest_id = ?
-            ORDER BY rowid
+            ORDER BY item_position, {("id" if _uses_postgres() else "rowid")}
             """,
             (manifest_id,),
         ).fetchall()
@@ -814,10 +823,10 @@ def get_manifest_for_shipment(shipment_order_id: str) -> dict | None:
     conn = _connect()
     try:
         row = conn.execute(
-            """
+            f"""
             SELECT id FROM shipment_manifests
             WHERE shipment_order_id = ?
-            ORDER BY created_at DESC, rowid DESC
+            ORDER BY created_at DESC, {("id" if _uses_postgres() else "rowid")} DESC
             LIMIT 1
             """,
             (shipment_order_id,),
@@ -862,13 +871,13 @@ def update_manifest(manifest_id: str, items: list[dict], notes: str | None = Non
             conn.execute(
                 "DELETE FROM manifest_items WHERE manifest_id = ?", (manifest_id,)
             )
-            for item in items:
+            for position, item in enumerate(items):
                 conn.execute(
                     """
                     INSERT INTO manifest_items
                         (id, manifest_id, sku, description, expected_qty,
-                         unit_value_cents, fragile, source_order_item_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                         unit_value_cents, fragile, source_order_item_id, item_position)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(uuid.uuid4()),
@@ -881,6 +890,7 @@ def update_manifest(manifest_id: str, items: list[dict], notes: str | None = Non
                         str(item["source_order_item_id"]).strip()
                         if item.get("source_order_item_id")
                         else None,
+                        position,
                     ),
                 )
             conn.execute(
@@ -978,12 +988,13 @@ def create_inspection(
                     now,
                 ),
             )
-            for photo in photo_records:
+            for position, photo in enumerate(photo_records):
                 conn.execute(
                     """
                     INSERT INTO inspection_photos
-                        (id, inspection_id, sha256, mime_type, size_bytes, storage_path, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (id, inspection_id, sha256, mime_type, size_bytes, storage_path,
+                         photo_position, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         photo["id"],
@@ -992,6 +1003,7 @@ def create_inspection(
                         photo["mime_type"],
                         photo["size_bytes"],
                         photo.get("storage_path"),
+                        position,
                         now,
                     ),
                 )
@@ -1017,19 +1029,19 @@ def get_inspection(inspection_id: str) -> dict | None:
             except (ValueError, TypeError):
                 pass
         photo_rows = conn.execute(
-            """
+            f"""
             SELECT id, sha256, mime_type, size_bytes, storage_path, created_at
             FROM inspection_photos WHERE inspection_id = ?
-            ORDER BY rowid
+            ORDER BY photo_position, {("id" if _uses_postgres() else "rowid")}
             """,
             (inspection_id,),
         ).fetchall()
         record["photos"] = [dict(r) for r in photo_rows]
         review_rows = conn.execute(
-            """
+            f"""
             SELECT id, decision, reviewer_label, notes, created_at
             FROM inspection_reviews WHERE inspection_id = ?
-            ORDER BY created_at ASC, rowid ASC
+            ORDER BY created_at ASC, review_position, {("id" if _uses_postgres() else "rowid")}
             """,
             (inspection_id,),
         ).fetchall()
