@@ -38,8 +38,22 @@ CREATE INDEX IF NOT EXISTS idx_reconciliation_runs_shipment
 
 ALTER TABLE shipment_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reconciliation_runs ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE shipment_documents FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON TABLE reconciliation_runs FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE shipment_documents FROM PUBLIC;
+REVOKE ALL ON TABLE reconciliation_runs FROM PUBLIC;
+
+-- Supabase creates these API roles. Skip their revokes in standalone CI PostgreSQL.
+DO $
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        EXECUTE 'REVOKE ALL ON TABLE shipment_documents FROM anon';
+        EXECUTE 'REVOKE ALL ON TABLE reconciliation_runs FROM anon';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        EXECUTE 'REVOKE ALL ON TABLE shipment_documents FROM authenticated';
+        EXECUTE 'REVOKE ALL ON TABLE reconciliation_runs FROM authenticated';
+    END IF;
+END
+$;
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('shipment-documents', 'shipment-documents', false, 10485760,
