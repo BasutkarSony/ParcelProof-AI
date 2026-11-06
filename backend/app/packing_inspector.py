@@ -508,6 +508,10 @@ def _gemini_failure_message(exc: Exception) -> str:
 class GeminiUnavailableError(RuntimeError):
     """Raised when no usable vision provider is configured or available."""
 
+    def __init__(self, message: str, status_code: int = 503):
+        super().__init__(message)
+        self.status_code = status_code
+
 
 def _validate_ai_result(ai_result: dict, manifest: dict) -> None:
     """Validate the structure of a vision-model response before persistence.
@@ -667,8 +671,10 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
                         f"{primary_diagnostic} The optional OpenAI vision fallback also failed: "
                         f"{safe_fallback_message}"
                     ) from None
+            provider_status = 429 if getattr(final_error, "code", None) == 429 or "RESOURCE_EXHAUSTED" in str(final_error).upper() else 503
             raise GeminiUnavailableError(
-                f"{primary_diagnostic} OPENAI_API_KEY may be configured as an optional fallback."
+                f"{primary_diagnostic} OPENAI_API_KEY may be configured as an optional fallback.",
+                status_code=provider_status,
             ) from None
         raise RuntimeError(_gemini_failure_message(final_error)) from None
 
