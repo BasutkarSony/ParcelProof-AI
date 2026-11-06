@@ -1319,5 +1319,44 @@ class GeminiResponseValidationTests(unittest.TestCase):
         self._pi._validate_ai_result(result, manifest_no_items)
 
 
+class GeminiProviderDiagnosticTests(unittest.TestCase):
+    def test_429_diagnostic_identifies_rate_or_quota_limit(self):
+        import app.packing_inspector as pi
+
+        class ProviderError(Exception):
+            code = 429
+            message = "RESOURCE_EXHAUSTED"
+
+        diagnostic = pi._gemini_failure_message(ProviderError("429"))
+        self.assertIn("HTTP 429", diagnostic)
+        self.assertIn("quota", diagnostic.lower())
+        self.assertIn("rate window", diagnostic.lower())
+        self.assertNotIn("temporarily unavailable", diagnostic.lower())
+
+    def test_503_diagnostic_identifies_temporary_service_outage(self):
+        import app.packing_inspector as pi
+
+        class ProviderError(Exception):
+            code = 503
+            message = "UNAVAILABLE"
+
+        diagnostic = pi._gemini_failure_message(ProviderError("503"))
+        self.assertIn("HTTP 503", diagnostic)
+        self.assertIn("temporarily unavailable", diagnostic.lower())
+        self.assertIn("after a retry", diagnostic.lower())
+        self.assertIn("quota limit", diagnostic.lower())
+
+    def test_404_diagnostic_identifies_invalid_model_configuration(self):
+        import app.packing_inspector as pi
+
+        class ProviderError(Exception):
+            code = 404
+            message = "NOT_FOUND"
+
+        diagnostic = pi._gemini_failure_message(ProviderError("404"))
+        self.assertIn("HTTP 404", diagnostic)
+        self.assertIn("GEMINI_MODEL", diagnostic)
+
+
 if __name__ == "__main__":
     unittest.main()
