@@ -427,13 +427,20 @@ def _run_openai_inspection(manifest: dict, photo_metas: list[dict], api_key: str
 
 
 def _is_retryable_gemini_error(exc: Exception) -> bool:
-    """Identify transient Gemini errors without exposing provider internals."""
+    """Retry transient provider outages, but never hammer rate/quota-limited requests."""
     code = getattr(exc, "code", None)
-    message = str(exc).upper()
-    return code in (429, 500, 502, 503, 504) or any(
-        token in message for token in (
-            "429", "500", "502", "503", "504",
-            "RESOURCE_EXHAUSTED", "UNAVAILABLE", "INTERNAL",
+    status = str(getattr(exc, "status", "") or "").upper()
+    message = str(getattr(exc, "message", "") or str(exc)).upper()
+
+    # Google uses 429 for both short-window rate limits and exhausted daily quota.
+    # A rapid server-side retry cannot reliably resolve either, so preserve evidence
+    # and let the operator retry after the reported rate window or quota reset.
+    if code == 429 or "429" in message or "429" in status or "RESOURCE_EXHAUSTED" in message:
+        return False
+
+    return code in (500, 502, 503, 504) or any(
+        token in message or token in status for token in (
+            "500", "502", "503", "504", "UNAVAILABLE", "INTERNAL",
         )
     )
 
@@ -475,12 +482,22 @@ def _gemini_failure_message(exc: Exception) -> str:
             "Gemini rejected the inspection request (HTTP 400). The configured model "
             "or structured-output schema may not support this request."
         )
-    if code == 429 or "RESOURCE_EXHAUSTED" in status or "RESOURCE_EXHAUSTED" in message:
+    if code == 429 or "429" in status or "429" in message or "RESOURCE_EXHAUSTED" in status or "RESOURCE_EXHAUSTED" in message:
+        if "QUOTA_EXCEEDED" in status or "QUOTA_EXCEEDED" in message or "DAILY QUOTA" in message:
+            return (
+                "Gemini daily quota was exhausted (HTTP 429). Check the Google AI "
+                "project's quota and wait for the quota reset, or request a quota increase. "
+                "This request was not automatically retried."
+            )
+        if "RATE_LIMIT_EXCEEDED" in status or "RATE_LIMIT_EXCEEDED" in message or "TOO_MANY_REQUESTS" in message:
+            return (
+                "Gemini's short-window rate limit was reached (HTTP 429). Wait for the "
+                "rate window to reset before retrying. This request was not automatically retried."
+            )
         return (
-            "Gemini rate limit or quota was reached (HTTP 429) after a retry. "
-            "Check the Google AI project quota and usage window. Wait for a rate "
-            "window or quota reset before trying again; repeated retries will not "
-            "clear an exhausted quota."
+            "Gemini returned HTTP 429, which can indicate a short-window rate limit or "
+            "an exhausted daily quota. Check the Google AI project's usage details, wait "
+            "for the applicable limit to reset, then retry. This request was not automatically retried."
         )
     if code == 503 or "UNAVAILABLE" in status or "UNAVAILABLE" in message:
         return (
