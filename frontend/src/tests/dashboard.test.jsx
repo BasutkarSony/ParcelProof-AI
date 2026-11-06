@@ -1,10 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from '../main.jsx'
 
 vi.mock('../style.css', () => ({ default: {} }))
 
 const mockOrders = [
+  {
+    order_id: 'SHP-1001',
+    checkout_order_id: 'CHECKOUT-1001',
+    status: 'ON_HOLD',
+    carrier: null,
+    tracking_number: null,
+    amount: 12.5,
+    currency: 'USD',
+    transaction_id: 'CAPTURE-1001',
+    paypal_capture_id: 'CAPTURE-1001',
+  },
   {
     order_id: 'ORD-1001',
     status: 'SHIPPED',
@@ -12,7 +23,7 @@ const mockOrders = [
     tracking_number: 'DEMO123456',
     amount: 149,
     currency: 'USD',
-    transaction_id: 'CAPTURE-1001',
+    transaction_id: 'SANDBOX-TXN-1001',
   },
 ]
 
@@ -43,9 +54,14 @@ describe('Dashboard', () => {
   it('loads and displays the shipment returned by the backend', async () => {
     render(<App />)
 
-    expect((await screen.findAllByText('ORD-1001')).length).toBeGreaterThan(0)
+    expect(await screen.findByText('SHP-1001')).toBeInTheDocument()
     expect(screen.getByText('LINKED PAYPAL CHECKOUTS')).toBeInTheDocument()
     expect(screen.getByText('Export reconciliation queue')).toBeInTheDocument()
+    expect(screen.queryByText('ORD-1001')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open SHP-1001 export workflow/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /Sample records/ }))
+    expect(await screen.findByText('ORD-1001')).toBeInTheDocument()
     expect(screen.getByText('Sample record · Not a PayPal checkout')).toBeInTheDocument()
   })
 })

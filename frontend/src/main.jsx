@@ -228,7 +228,7 @@ export default function App() {
   const [oauthMessage, setOauthMessage] = useState('')
 
   // UI state for Dashboard
-  const [activeTab, setActiveTab] = useState('all')
+  const [activeTab, setActiveTab] = useState('paypal')
   const [searchQuery, setSearchQuery] = useState('')
   const [showArchDetails, setShowArchDetails] = useState(false)
   const [batchAiLoading, setBatchAiLoading] = useState(false)
@@ -459,19 +459,9 @@ export default function App() {
 
       if (!matchesSearch) return false
 
-      const res = results[order.order_id]
-      const ai = aiResults[order.order_id]
-
-      if (activeTab === 'needs-remediation') {
-        return (res && res.result === 'BLOCKED') || (ai && (ai.evidence_tier === 'MAJOR_EVIDENCE_GAPS' || ai.evidence_tier === 'EVIDENCE_GAPS'))
-      }
-      if (activeTab === 'evidence-complete') {
-        return ai && ai.evidence_tier === 'RECORD_COMPLETE'
-      }
-      if (activeTab === 'delivered') {
-        return order.status === 'DELIVERED'
-      }
-
+      if (activeTab === 'paypal') return Boolean(order.checkout_order_id)
+      if (activeTab === 'samples') return !order.checkout_order_id
+      if (activeTab === 'delivered') return Boolean(order.checkout_order_id) && order.status === 'DELIVERED'
       return true
     })
   }, [orders, results, aiResults, activeTab, searchQuery])
@@ -1037,16 +1027,7 @@ function ShipmentReviewMain({
   setSearchQuery,
   showArchDetails,
   setShowArchDetails,
-  batchAiLoading,
-  batchValidateLoading,
-  readyChecksCount,
-  blockedCount,
-  evidenceCompleteCount,
-  validationRun,
-  aiAnalysisRun,
   testPayPalConnection,
-  handleAnalyzeAll,
-  handleValidateAll,
   validate,
   openInspector,
   navigateTo
@@ -1201,22 +1182,6 @@ function ShipmentReviewMain({
           <h2>Export reconciliation queue</h2>
           <p>Open a paid shipment to review its manifest, add export documents and resolve mismatches. Sample shipments remain separate.</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            className="btn-secondary btn-ai"
-            onClick={handleAnalyzeAll}
-            disabled={loading || batchAiLoading || !orders.length}
-          >
-            {batchAiLoading ? 'Analyzing AI…' : 'Scan All AI Evidence ↗'}
-          </button>
-          <button
-            className="btn-primary"
-            onClick={handleValidateAll}
-            disabled={loading || batchValidateLoading || !orders.length}
-          >
-            {batchValidateLoading ? 'Validating…' : 'Run All Data Checks ↗'}
-          </button>
-        </div>
       </section>
 
       {error && (
@@ -1229,27 +1194,19 @@ function ShipmentReviewMain({
         <div className="filter-tabs" role="tablist">
           <button
             role="tab"
-            aria-selected={activeTab === 'all'}
-            className={`filter-tab ${activeTab === 'all' ? 'active' : ''}`}
-            onClick={() => setActiveTab('all')}
+            aria-selected={activeTab === 'paypal'}
+            className={`filter-tab ${activeTab === 'paypal' ? 'active' : ''}`}
+            onClick={() => setActiveTab('paypal')}
           >
-            All Shipments <span>{orders.length}</span>
+            PayPal linked <span>{paidPayPalOrders.length}</span>
           </button>
           <button
             role="tab"
-            aria-selected={activeTab === 'needs-remediation'}
-            className={`filter-tab ${activeTab === 'needs-remediation' ? 'active' : ''}`}
-            onClick={() => setActiveTab('needs-remediation')}
+            aria-selected={activeTab === 'samples'}
+            className={`filter-tab ${activeTab === 'samples' ? 'active' : ''}`}
+            onClick={() => setActiveTab('samples')}
           >
-            Needs Remediation <span>{validationRun ? blockedCount : 'Not evaluated'}</span>
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'evidence-complete'}
-            className={`filter-tab ${activeTab === 'evidence-complete' ? 'active' : ''}`}
-            onClick={() => setActiveTab('evidence-complete')}
-          >
-            Evidence Complete <span>{aiAnalysisRun ? evidenceCompleteCount : 'Not evaluated'}</span>
+            Sample records <span>{orders.length - paidPayPalOrders.length}</span>
           </button>
           <button
             role="tab"
@@ -1257,7 +1214,7 @@ function ShipmentReviewMain({
             className={`filter-tab ${activeTab === 'delivered' ? 'active' : ''}`}
             onClick={() => setActiveTab('delivered')}
           >
-            Delivered <span>{orders.filter(o => o.status === 'DELIVERED').length}</span>
+            Delivered <span>{paidPayPalOrders.filter(order => order.status === 'DELIVERED').length}</span>
           </button>
         </div>
         <div className="search-input-wrap">
@@ -1281,7 +1238,11 @@ function ShipmentReviewMain({
         </div>
       ) : filteredOrders.length === 0 ? (
         <div className="order-card" style={{ textAlign: 'center', padding: '40px' }} role="status">
-          No shipments match the selected filter.
+          {activeTab === 'paypal'
+            ? 'No PayPal-linked shipments yet. Create a Sandbox checkout to start an export record.'
+            : activeTab === 'delivered'
+            ? 'No PayPal-linked shipments are marked delivered yet.'
+            : 'No sample records match this filter.'}
         </div>
       ) : (
         <div className="orders-grid">
@@ -1405,25 +1366,36 @@ function ShipmentReviewMain({
                       : 'Sample record · Not a PayPal checkout'}
                   </span>
                   <div className="card-footer-actions">
-                    <button
-                      className="btn-secondary"
-                      onClick={() => navigateTo('/manifests', { shipmentId: order.order_id })}
-                    >
-                      {order.checkout_order_id ? 'Open export workflow →' : 'Open sample manifest ↗'}
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => validate(order)}
-                      disabled={result?.loading}
-                    >
-                      {result?.loading ? 'Checking…' : 'Validate →'}
-                    </button>
-                    <button
-                      className="btn-secondary btn-ai"
-                      onClick={() => openInspector(order)}
-                    >
-                      Inspect &amp; Remediate ↗
-                    </button>
+                    {order.checkout_order_id ? (
+                      <button
+                        className="btn-primary"
+                        onClick={() => navigateTo('/manifests', { shipmentId: order.order_id })}
+                      >
+                        Open export workflow →
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => navigateTo('/manifests', { shipmentId: order.order_id })}
+                        >
+                          Open sample manifest ↗
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => validate(order)}
+                          disabled={result?.loading}
+                        >
+                          {result?.loading ? 'Checking…' : 'Validate →'}
+                        </button>
+                        <button
+                          className="btn-secondary btn-ai"
+                          onClick={() => openInspector(order)}
+                        >
+                          Inspect &amp; Remediate ↗
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </article>
