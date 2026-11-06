@@ -141,7 +141,9 @@ def connect_postgres(database_url: str, timeout: float = 30.0) -> PostgresConnec
     connection = psycopg.connect(
         database_url,
         connect_timeout=max(1, int(timeout)),
-        sslmode="require",
+        # Supabase and hosted databases must use TLS. A local CI-only Postgres
+        # service can opt out because it runs inside an isolated job network.
+        sslmode=os.getenv("DATABASE_SSLMODE", "require"),
         row_factory=hybrid_row_factory,
     )
     return PostgresConnection(connection)
