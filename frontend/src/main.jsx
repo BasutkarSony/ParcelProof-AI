@@ -4,6 +4,22 @@ import './style.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000')
 
+// Read API responses defensively. Reverse proxies and interrupted requests can
+// return empty or non-JSON bodies; never replace the real HTTP error with a
+// JSON parser exception.
+async function readApiJson(response) {
+  const body = await response.text()
+  if (!body) return {}
+  try {
+    return JSON.parse(body)
+  } catch {
+    return {
+      detail: body.slice(0, 500) || `Server returned a non-JSON response (HTTP ${response.status}).`
+    }
+  }
+}
+
+
 // ─── ParcelProof AI — unified shell across all routes ───────────────────────────
 // Routes:
 //   /                    Shipment Evidence Review Dashboard
@@ -2345,11 +2361,12 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
       })
 
       if (!res.ok) {
-        const data = await res.json()
+        const data = await readApiJson(res)
+        const detail = typeof data.detail === 'string'
+          ? data.detail
+          : (data.detail ? JSON.stringify(data.detail) : '')
         const err = new Error(
-          typeof data.detail === 'string'
-            ? data.detail
-            : JSON.stringify(data.detail) || 'Failed to complete packing inspection'
+          detail || `Packing inspection request failed (HTTP ${res.status}). The server returned no readable error message. Your finalized manifest is unchanged; retry the inspection after the service recovers.`
         )
         err.status = res.status
         // Only HTTP 503 (transient provider outage) is retry-eligible.
@@ -2358,7 +2375,10 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         throw err
       }
 
-      const data = await res.json()
+      const data = await readApiJson(res)
+      if (!data.inspection_id) {
+        throw new Error('The inspection service returned an incomplete response. No inspection result was saved; retry after checking the service.')
+      }
       setInspectionResult(data)
       setProcessingStatus('complete')
       setUploadError('')
