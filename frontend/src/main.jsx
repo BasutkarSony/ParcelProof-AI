@@ -918,7 +918,6 @@ export default function App() {
                             placeholder="e.g. OnTrac, LaserShip, Royal Mail"
                           />
                         </div>
-                        ))
                       )}
 
                     </div>
