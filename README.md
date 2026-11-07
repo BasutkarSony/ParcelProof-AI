@@ -29,7 +29,7 @@ Small online merchants often handle payment, order lines, warehouse picking and 
 | Buyer checkout | A small storefront for physical merchandise with recipient and delivery details. |
 | PayPal payment | PayPal Sandbox Orders v2 checkout with server-priced item lines and verified capture. |
 | Order-derived manifest | Creates a packing manifest from the exact items and quantities in the paid order. |
-| Packing inspection | Groq Qwen Vision can inspect up to three photos when configured; Gemini handles larger photo sets and is the fallback. Both compare visible items with the finalized manifest; the merchant makes the decision. |
+| Packing inspection | Groq Qwen Vision can inspect up to three photos when configured; Gemini handles larger photo sets and is the fallback. Both compare visible items with the finalized manifest description; the merchant makes the decision. One overview photo is usually enough, with detail photos only when useful. |
 | Evidence record | Stores photo hashes and the finalized manifest fingerprint with each inspection. |
 | Human review | Records an explicit merchant decision separately from model observations. |
 | PayPal tracking | Prepares and submits a tracking update to the matching Orders v2 order and capture after all required checks. |
@@ -40,7 +40,7 @@ Small online merchants often handle payment, order lines, warehouse picking and 
 2. Backend verifies the completed PayPal capture, amount, currency and order linkage.
 3. ParcelProof creates a persistent shipment and a draft manifest from the purchased items.
 4. Merchant reviews and finalizes the manifest; its contents are fingerprinted.
-5. Before sealing the parcel, the merchant uploads up to five clear packing photographs showing the actual items.
+5. Before sealing the parcel, the merchant uploads one clear overview photograph showing all unpacked items. Additional photographs are optional and should show a separate item, a useful label or a visible issue—not repeated angles of the same object.
 6. The configured vision provider compares visible items with the finalized manifest and returns structured observations and uncertainty. When `GROQ_API_KEY` is configured, Groq Qwen Vision is preferred for up to three photos; four or five photos are routed to Gemini so every uploaded image is analysed. Gemini is the fallback when Groq fails.
 7. The model never approves or rejects a shipment. A merchant reviews the original photos and model observations and records APPROVED, REJECTED or NEEDS_CORRECTION.
 8. The approved packing record remains linked to the paid order and manifest. A guarded PayPal tracking action is available in the backend, but tracking writes remain disabled by default in the hosted demo.
@@ -54,6 +54,7 @@ Small online merchants often handle payment, order lines, warehouse picking and 
 - Both providers use the same manifest prompt and server-side response validation. Provider and model names are recorded with each inspection.
 - Every inspection remains pending human review until a merchant decision is recorded.
 - The app distinguishes what is visible in photos from what is not visible. A sealed parcel's contents cannot be verified from its exterior.
+- A merchant SKU is an internal catalogue identifier; the model is not expected to read it from the physical product. Product matching uses the manifest description and visible evidence, and ambiguous cases should remain uncertain.
 - Deterministic shipment checks use rules and text-pattern heuristics. They are advisory, not a PayPal eligibility decision.
 
 Neither vision model is guaranteed to be error-free or independently auditable. A photo cannot prove the contents of a sealed parcel. The current MVP does not fetch carrier events, so merchant-entered tracking notes are not carrier proof. ParcelProof AI does not calculate Seller Protection eligibility or guarantee a dispute outcome; PayPal makes those decisions.
@@ -248,6 +249,7 @@ ParcelProof AI is a hackathon prototype, not an official PayPal product.
 
 - Shipment evidence checks use deterministic rules and text-pattern heuristics. Packing-photo observations use Gemini Vision, with an optional OpenAI Vision fallback.
 - Vision-model outputs can be wrong and require human review.
+- The current catalogue does not store product reference images or barcode/GTIN identifiers. The model cannot prove an exact internal SKU from a generic description or photograph alone; it can only compare the visible appearance with the manifest description.
 - A photograph cannot prove the contents of a sealed package.
 - The hosted demo uses one shared password, not individual merchant accounts or role-based access control; reviewer labels are still self-entered demo labels, not verified identities.
 - Text entered by a merchant is not independent proof from a carrier.

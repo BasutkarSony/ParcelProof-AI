@@ -47,7 +47,7 @@ The deterministic checks are advisory rules and text-pattern heuristics. They ar
 1. Open **Manifests**.
 2. Select the shipment created from the paid checkout.
 3. Review the item descriptions and quantities populated from the order. Confirm that they match the physical items intended for the parcel.
-4. Complete any editable SKU, description, quantity, unit-value or fragile-status fields shown by the form. Do not add items that are not actually being packed.
+4. Confirm the item description and quantity. Treat the SKU as your internal catalogue reference; the AI does not expect that code to be printed on the physical product. Add only useful distinguishing details to the description (for example, brand, model, size or material when those details define the ordered item). Do not add items that are not actually being packed.
 5. Save the draft if the interface offers a save action.
 6. When the declared contents are correct, choose the finalize action.
 7. Confirm that the status changes to **FINALIZED** and that a SHA-256 manifest fingerprint is displayed.
@@ -58,8 +58,8 @@ Finalization locks the manifest against normal edits. Check quantities and descr
 
 1. From the finalized manifest, open **Packing Station**.
 2. Confirm that the selected shipment and manifest are correct.
-3. Pack the order and take clear, well-lit photographs showing the items and their condition before the parcel is sealed. Avoid blurry, obstructed or duplicate images.
-4. Upload up to five photographs using the photo control.
+3. Pack the order and take one clear, well-lit overview photograph showing all unpacked items and their condition before the parcel is sealed. Add a second photograph only when it shows a separate item, a useful label or a visible issue. You do not need repeated angles of the same item.
+4. Upload the overview photograph and any genuinely useful detail photograph(s), up to five in total.
 5. Review the selected photo thumbnails/count, then choose **Run AI Vision Inspection**.
 6. Wait for the inspection result. If a temporary provider error offers **Retry Inspection**, retry only after checking the message. Validation errors such as an unfinalized manifest are not retryable; fix the underlying issue first.
 
@@ -73,7 +73,7 @@ The optional OpenAI Vision fallback is used only when `OPENAI_API_KEY` is config
 
 **Evidence retention on provider failure:** the backend records a non-approvable `AI_FAILED` attempt with the manifest fingerprint, photo hashes and saved photo references when the database write succeeds. It does not delete uploaded photos just because the AI service is unavailable. An `AI_FAILED` attempt cannot be approved and cannot unlock PayPal tracking. A retry creates a new attempt; the failed attempt remains in history. This recovery behavior is covered by automated tests, but still needs a fresh end-to-end hosted Storage verification.
 
-AI output is an observation aid, not an approval. The model can miss items or report incorrect findings. A photograph of a sealed parcel cannot establish the parcel's contents.
+AI output is an observation aid, not an approval. The model can miss items or report incorrect findings. A photograph of a sealed parcel cannot establish the parcel's contents. The current catalogue has no saved product reference images or barcode/GTIN matching. Without those references, the model can compare only the visible appearance with the manifest description; it cannot prove an exact internal SKU. Generic descriptions or ambiguous photographs should result in uncertainty, not an assumed mismatch.
 
 ## 8. Review an inspection
 

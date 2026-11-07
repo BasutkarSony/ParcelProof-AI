@@ -1104,7 +1104,7 @@ function ShipmentReviewMain({
           <div className="export-flow-connector"></div>
           <div className="export-flow-step">
             <span>02</span>
-            <div><strong>Packing manifest</strong><small>Confirm SKUs and quantities</small></div>
+            <div><strong>Packing manifest</strong><small>Confirm item descriptions and quantities</small></div>
             <b>Finalized</b>
           </div>
           <div className="export-flow-connector"></div>
@@ -1759,7 +1759,7 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
                 <div className="items-card-header">
                   <div>
                     <h3>Declared Manifest Items</h3>
-                    <p>Enter the SKUs, item descriptions, expected shipment quantities, and declared fragile status.</p>
+                    <p>Confirm each paid-order item and quantity. SKU is your internal reference, not a code the AI expects to read from the product. Add only useful distinguishing details to the description.</p>
                   </div>
                   <div className="items-header-stats">
                     <span className="stat-pill">Items: {draftItems.length}</span>
@@ -1779,8 +1779,8 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
                         <thead>
                           <tr>
                             <th style={{ width: '40px' }}>#</th>
-                            <th style={{ width: '130px' }}>SKU</th>
-                            <th>Description *</th>
+                            <th style={{ width: '130px' }}>SKU (internal)</th>
+                            <th>Product description &amp; identifying details *</th>
                             <th style={{ width: '100px' }}>Qty *</th>
                             <th style={{ width: '120px' }}>Unit Value ($)</th>
                             <th style={{ width: '80px' }}>Fragile</th>
@@ -1812,7 +1812,7 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
                                     type="text"
                                     className="form-control"
                                     value={item.description}
-                                    placeholder="Product description…"
+                                    placeholder="Product name + useful identifying details…"
                                     onChange={e => handleItemChange(idx, 'description', e.target.value)}
                                   />
                                 )}
@@ -2919,7 +2919,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                     <div className="upload-header">
                       <div>
                         <h3>Packing Evidence Photographs</h3>
-                        <p>Upload 1 to 5 packing station photos (JPEG, PNG, WebP · max 10MB each) showing contents, container, and protective wrap.</p>
+                        <p>One clear overview photo showing all unpacked items before sealing is usually enough. Add another only to show a separate item, a label or visible damage; repeated angles of the same item are not required.</p>
                       </div>
                       <span className="pill pill-unchecked">
                         {selectedPhotos.length} / 5 Photos
@@ -2944,7 +2944,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                         </div>
                         <span className="dropzone-title">Click to upload packing station photos</span>
                         <small className="dropzone-sub">
-                          Supported: JPEG, PNG, WebP up to 10MB.
+                          JPEG, PNG or WebP · up to 10MB each · 1–5 photos when needed.
                         </small>
                       </label>
                     )}
