@@ -10,6 +10,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import HTTPException, UploadFile
+from fastapi.testclient import TestClient
 
 import app.store as store
 from app.store import (
@@ -26,6 +27,7 @@ from app.store import (
 )
 from app.packing_inspector import GeminiUnavailableError
 from app.main import (
+    app,
     review_packing_inspection,
     submit_shipment_tracking,
     get_inspection_by_id,
@@ -123,6 +125,52 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
             self.assertEqual(len(failed["photos"]), 1)
             saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
             self.assertTrue(saved_photo.is_file())
+
+    def test_native_browser_review_form_persists_decision_and_redirects(self):
+        with patch.dict(os.environ, {
+            "PARCELPROOF_DEMO_AUTH_REQUIRED": "false",
+            "PARCELPROOF_DEMO_USERNAME": "",
+            "PARCELPROOF_DEMO_PASSWORD": "",
+        }):
+            response = TestClient(app).post(
+                f"/api/inspections/{self.inspection['id']}/review/form",
+                data={
+                    "decision": "NEEDS_CORRECTION",
+                    "reviewer_label": "Merchant",
+                    "notes": "The photographed goods do not match the finalized manifest. Please submit corrected packing photos.",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("review_status=NEEDS_CORRECTION", response.headers["location"])
+        saved = get_inspection(self.inspection["id"])
+        self.assertEqual(saved["inspection_status"], "NEEDS_CORRECTION")
+        self.assertEqual(len(saved["review_history"]), 1)
+        self.assertEqual(saved["review_history"][0]["reviewer_label"], "Merchant")
+        self.assertIn("corrected packing photos", saved["review_history"][0]["notes"])
+
+    def test_native_browser_review_form_redirects_validation_errors_without_saving(self):
+        with patch.dict(os.environ, {
+            "PARCELPROOF_DEMO_AUTH_REQUIRED": "false",
+            "PARCELPROOF_DEMO_USERNAME": "",
+            "PARCELPROOF_DEMO_PASSWORD": "",
+        }):
+            response = TestClient(app).post(
+                f"/api/inspections/{self.inspection['id']}/review/form",
+                data={
+                    "decision": "NEEDS_CORRECTION",
+                    "reviewer_label": "Merchant",
+                    "notes": "",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("review_error=", response.headers["location"])
+        saved = get_inspection(self.inspection["id"])
+        self.assertEqual(saved["inspection_status"], "PENDING_HUMAN_REVIEW")
+        self.assertEqual(saved["review_history"], [])
 
     def test_human_decision_is_persisted_without_changing_ai_result(self):
         result = review_packing_inspection(
