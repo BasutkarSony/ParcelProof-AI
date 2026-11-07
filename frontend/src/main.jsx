@@ -2508,7 +2508,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   // Format file size
   async function handleHumanReview(decision) {
     if (!inspectionDetail || reviewSaving) return
-    const notes = reviewNotes.trim()
+    // Read the live field value so browser paste/autofill cannot leave React state stale.
+    const notes = (reviewNotesRef.current?.value ?? reviewNotes).trim()
     if (decision !== 'APPROVED' && !notes) {
       setReviewError('Add a note explaining the rejection or requested correction.')
       return
@@ -2526,9 +2527,9 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
           notes
         })
       })
-      const data = await res.json().catch(() => ({}))
+      const data = await readApiJson(res)
       if (!res.ok) {
-        throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail) || 'Could not save the review decision.')
+        throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail) || `Could not save the review decision (HTTP ${res.status}).`)
       }
       setInspectionDetail(prev => ({
         ...prev,
@@ -2542,6 +2543,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
           : item
       ))
       setReviewNotes('')
+      if (reviewNotesRef.current) reviewNotesRef.current.value = ''
       setReviewFeedback(`Human review recorded: ${data.inspection_status.replaceAll('_', ' ')}.`)
     } catch (err) {
       setReviewError(err.message || 'Could not save the review decision.')
@@ -3070,6 +3072,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const [error, setError] = useState('')
   const [reviewerLabel, setReviewerLabel] = useState('Merchant')
   const [reviewNotes, setReviewNotes] = useState('')
+  const reviewNotesRef = useRef(null)
   const [reviewSaving, setReviewSaving] = useState(false)
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [reviewError, setReviewError] = useState('')
@@ -3608,6 +3611,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                               <label htmlFor="review-notes">Review notes</label>
                               <textarea
                                 id="review-notes"
+                                ref={reviewNotesRef}
                                 className="form-control"
                                 rows="3"
                                 maxLength={2000}
@@ -3617,14 +3621,14 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                               />
                             </div>
                             <div className="remediation-actions" style={{ flexWrap: 'wrap', marginTop: '14px' }}>
-                              <button className="btn-primary" disabled={reviewSaving || !reviewerLabel.trim()} onClick={() => handleHumanReview('APPROVED')}>
+                              <button type="button" className="btn-primary" disabled={reviewSaving || !reviewerLabel.trim()} onClick={() => handleHumanReview('APPROVED')}>
                                 {reviewSaving ? 'Saving…' : 'Approve packing review'}
                               </button>
-                              <button className="btn-secondary" disabled={reviewSaving || !reviewNotes.trim()} onClick={() => handleHumanReview('NEEDS_CORRECTION')}>
-                                Request correction
+                              <button type="button" className="btn-secondary" disabled={reviewSaving} onClick={() => handleHumanReview('NEEDS_CORRECTION')}>
+                                {reviewSaving ? 'Saving…' : 'Request correction'}
                               </button>
-                              <button className="btn-secondary" disabled={reviewSaving || !reviewNotes.trim()} onClick={() => handleHumanReview('REJECTED')}>
-                                Reject inspection
+                              <button type="button" className="btn-secondary" disabled={reviewSaving} onClick={() => handleHumanReview('REJECTED')}>
+                                {reviewSaving ? 'Saving…' : 'Reject inspection'}
                               </button>
                             </div>
                           </div>
