@@ -1495,5 +1495,143 @@ class GeminiProviderDiagnosticTests(unittest.TestCase):
         self.assertIn("GEMINI_MODEL", diagnostic)
 
 
+
+class GroqProviderTests(unittest.TestCase):
+    """Groq's vision path is selected safely and never drops evidence photos."""
+
+    def setUp(self):
+        self.manifest = {
+            "id": "manifest-groq",
+            "shipment_order_id": "ORD-GROQ",
+            "manifest_hash": "d" * 64,
+            "items": [{
+                "id": "item-1",
+                "sku": "NB-001",
+                "description": "Test notebook",
+                "expected_qty": 1,
+                "fragile": False,
+            }],
+        }
+        self.photos = [
+            {"id": f"photo-{index}", "data": _make_jpeg(), "mime_type": "image/jpeg"}
+            for index in range(3)
+        ]
+
+    def test_groq_request_uses_qwen_json_schema_and_all_three_photos(self):
+        import app.packing_inspector as pi
+
+        response_payload = {
+            "choices": [{
+                "message": {"content": json.dumps(_ai_result_fixture(["item-1"]))},
+            }],
+        }
+        http_response = MagicMock()
+        http_response.read.return_value = json.dumps(response_payload).encode("utf-8")
+        context_response = MagicMock()
+        context_response.__enter__.return_value = http_response
+        context_response.__exit__.return_value = False
+
+        with patch.dict(os.environ, {
+            "GROQ_API_KEY": "fake-groq-key",
+            "GROQ_VISION_MODEL": "unit-test-qwen-vision",
+            "GEMINI_API_KEY": "",
+            "OPENAI_API_KEY": "",
+            "PACKING_VISION_PROVIDER": "groq",
+        }, clear=False):
+            with patch(
+                "app.packing_inspector.urllib.request.urlopen",
+                return_value=context_response,
+            ) as mock_urlopen:
+                result = pi.run_inspection(self.manifest, self.photos)
+
+        self.assertEqual(result["model_used"], "unit-test-qwen-vision")
+        self.assertEqual(result["engine_metadata"]["type"], "GROQ_VISION_LLM")
+        self.assertTrue(result["ai_result"]["human_review_required"])
+
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["model"], "unit-test-qwen-vision")
+        self.assertTrue(payload["response_format"]["json_schema"]["strict"])
+        image_parts = [
+            part for part in payload["messages"][0]["content"]
+            if part.get("type") == "image_url"
+        ]
+        self.assertEqual(len(image_parts), 3)
+        self.assertTrue(all(
+            part["image_url"]["url"].startswith("data:image/jpeg;base64,")
+            for part in image_parts
+        ))
+
+    def test_groq_never_truncates_more_than_three_photos(self):
+        import app.packing_inspector as pi
+
+        with patch.dict(os.environ, {
+            "GROQ_API_KEY": "fake-groq-key",
+            "GEMINI_API_KEY": "",
+            "OPENAI_API_KEY": "",
+            "PACKING_VISION_PROVIDER": "groq",
+        }, clear=False):
+            with patch("app.packing_inspector.urllib.request.urlopen") as mock_urlopen:
+                with self.assertRaises(pi.GeminiUnavailableError) as ctx:
+                    pi.run_inspection(self.manifest, self.photos + [self.photos[0]])
+
+        self.assertIn("up to three images", str(ctx.exception).lower())
+        mock_urlopen.assert_not_called()
+
+    def test_auto_prefers_groq_when_key_is_configured_and_photo_count_fits(self):
+        import app.packing_inspector as pi
+
+        groq_result = {
+            "ai_result": _ai_result_fixture(["item-1"]),
+            "model_used": "qwen/qwen3.8-27b",
+            "engine_metadata": {"type": "GROQ_VISION_LLM"},
+        }
+        with patch.dict(os.environ, {
+            "GROQ_API_KEY": "fake-groq-key",
+            "GEMINI_API_KEY": "fake-gemini-key",
+            "OPENAI_API_KEY": "",
+            "PACKING_VISION_PROVIDER": "auto",
+        }, clear=False):
+            with patch(
+                "app.packing_inspector._run_groq_inspection",
+                return_value=groq_result,
+            ) as mock_groq:
+                with patch("app.packing_inspector._run_gemini_inspection") as mock_gemini:
+                    result = pi.run_inspection(self.manifest, self.photos)
+
+        self.assertEqual(result["engine_metadata"]["type"], "GROQ_VISION_LLM")
+        mock_groq.assert_called_once()
+        mock_gemini.assert_not_called()
+
+    def test_groq_failure_falls_back_to_gemini(self):
+        import app.packing_inspector as pi
+
+        gemini_result = {
+            "ai_result": _ai_result_fixture(["item-1"]),
+            "model_used": "gemini-test",
+            "engine_metadata": {"type": "GEMINI_VISION_LLM"},
+        }
+        with patch.dict(os.environ, {
+            "GROQ_API_KEY": "fake-groq-key",
+            "GEMINI_API_KEY": "fake-gemini-key",
+            "OPENAI_API_KEY": "",
+            "PACKING_VISION_PROVIDER": "groq",
+        }, clear=False):
+            with patch(
+                "app.packing_inspector._run_groq_inspection",
+                side_effect=RuntimeError("Groq vision temporary outage."),
+            ) as mock_groq:
+                with patch(
+                    "app.packing_inspector._run_gemini_inspection",
+                    return_value=gemini_result,
+                ) as mock_gemini:
+                    result = pi.run_inspection(self.manifest, self.photos)
+
+        self.assertEqual(result["engine_metadata"]["type"], "GEMINI_VISION_LLM")
+        mock_groq.assert_called_once()
+        mock_gemini.assert_called_once()
+
+
+
 if __name__ == "__main__":
     unittest.main()
