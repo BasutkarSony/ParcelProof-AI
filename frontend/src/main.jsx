@@ -2523,7 +2523,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           decision,
-          reviewer_label: reviewerLabel.trim() || 'Merchant',
+          reviewer_label: 'Merchant',
           notes
         })
       })
@@ -3201,6 +3201,9 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const latestInspectionId = inspectionsList[0]?.inspection_id
   const isLatestInspection = Boolean(inspectionDetail && inspectionDetail.inspection_id === latestInspectionId)
   const canHumanReview = isLatestInspection && inspectionDetail?.inspection_status === 'PENDING_HUMAN_REVIEW'
+  const suggestedReviewNote = aiResult?.inspection_summary
+    ? `${aiResult.inspection_summary} Keep the shipment on hold until the correct item is verified and updated packing evidence is recorded.`
+    : 'Verify that the photographed goods match the finalized manifest and capture updated packing evidence before dispatch.'
   const canSubmitTracking =
     Boolean(selectedShipment?.checkout_order_id) &&
     isLatestInspection &&
@@ -3223,37 +3226,24 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
         </div>
       </header>
 
-      <div className="packing-layout">
-        {/* Left: Shipment selector */}
-        <aside className="manifest-shipments-sidebar" aria-label="Select Shipment">
-          <div className="sidebar-section-title">
-            <span>SELECT SHIPMENT</span>
-            <small>{orders.length} Records</small>
-          </div>
-          <div className="manifest-shipment-cards">
-            {orders.map(order => {
-              const isSelected = selectedShipment?.order_id === order.order_id
-              return (
-                <button
-                  key={order.order_id}
-                  className={`manifest-shipment-card ${isSelected ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveShipmentId(order.order_id)
-                  }}
-                >
-                  <div className="m-card-top">
-                    <strong>{order.order_id}</strong>
-                    <span className="m-card-status">{order.status}</span>
-                  </div>
-                  <div className="m-card-details">
-                    <span>Carrier: {order.carrier || 'N/A'}</span>
-                    <span>Tracking: {order.tracking_number ? `${order.tracking_number.slice(0, 10)}…` : 'Missing'}</span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </aside>
+
+      <div className="packing-layout inspection-layout">
+        <div className="inspection-shipment-toolbar">
+          <label htmlFor="inspection-shipment-select">Shipment to review</label>
+          <select
+            id="inspection-shipment-select"
+            className="form-control"
+            value={selectedShipment?.order_id || ''}
+            onChange={event => setActiveShipmentId(event.target.value)}
+          >
+            {orders.map(order => (
+              <option key={order.order_id} value={order.order_id}>
+                {order.order_id} · {order.status || 'UNKNOWN'} · {order.tracking_number ? 'Tracking added' : 'No tracking'}
+              </option>
+            ))}
+          </select>
+          <span>{orders.length} shipments</span>
+        </div>
 
         {/* Right: Inspection & Human Review Area */}
         <section className="packing-main-panel" aria-label="Human Review Area">
@@ -3370,7 +3360,148 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
 
                   {inspectionDetail && (
                     <>
-                      {/* Inspection Metadata Bar */}
+{/* AI Summary Card */}
+                      {aiResult?.inspection_summary && (
+                        <div className="ai-summary-callout">
+                          <div className="summary-callout-header">
+                            <span className="eyebrow" style={{ color: 'var(--cobalt)', margin: 0 }}>AI VISION INSPECTION SUMMARY</span>
+                            <span className={`quality-badge q-${(imageQuality.overall || 'fair').toLowerCase()}`}>
+                              Image Quality: {imageQuality.overall || 'UNKNOWN'}
+                            </span>
+                          </div>
+                          <p className="summary-callout-body">{aiResult.inspection_summary}</p>
+                        </div>
+                      )}
+
+                      
+{/* Photo Evidence Records (SHA-256 and Stored Metadata) */}
+                      <div className="photo-records-card inspection-photo-gallery">
+                        <div className="records-header">
+                          <div>
+                            <h3>Persisted Evidence Photographs</h3>
+                            <p>Review the original packing photos below. Integrity records are available under each photo.</p>
+                          </div>
+                          <span className="pill pill-unchecked">
+                            {inspectionDetail.photos?.length || 0} Photos Recorded
+                          </span>
+                        </div>
+
+                        <div className="evidence-records-grid">
+                          {inspectionDetail.photos?.map((photo, i) => (
+                            <div key={photo.id || i} className="evidence-record-item">
+                              <div className="evidence-record-badge">Photo #{i + 1}</div>
+                              <img
+                                className="persisted-evidence-photo"
+                                src={`${API_BASE}/api/inspections/${inspectionDetail.inspection_id}/photos/${photo.id}`}
+                                alt={`Persisted packing evidence photo ${i + 1}`}
+                                loading="lazy"
+                              />
+                              <details className="photo-integrity-details">
+                                <summary>Photo integrity details</summary>
+                                <div className="ev-row">
+                                  <span className="ev-label">SHA-256 Digest:</span>
+                                  <code className="ev-hash" title={photo.sha256}>{photo.sha256}</code>
+                                </div>
+                                <div className="ev-row-split">
+                                  <span>MIME: <strong>{photo.mime_type}</strong></span>
+                                  <span>Size: <strong>{formatBytes(photo.size_bytes)}</strong></span>
+                                </div>
+                                <div className="ev-id-row">
+                                  <small>Record ID: <code>{photo.id}</code></small>
+                                </div>
+                              </details>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      
+
+                      <div className="manifest-items-card inspection-decision-card">
+                        <div className="items-card-header">
+                          <div>
+                            <h3>Merchant decision</h3>
+                            <p>Check the original photos and decide whether this shipment can proceed.</p>
+                          </div>
+                          <span className={`pill ${inspectionDetail.inspection_status === 'APPROVED' ? 'pill-pass' : inspectionDetail.inspection_status === 'REJECTED' ? 'pill-blocked' : 'pill-warn'}`}>
+                            {inspectionDetail.inspection_status.replaceAll('_', ' ')}
+                          </span>
+                        </div>
+
+                        {reviewFeedback && <div className="pass-callout" role="status">{reviewFeedback}</div>}
+                        {reviewError && <div className="findings-box issues" role="alert">{reviewError}</div>}
+
+                        {canHumanReview ? (
+                          <form
+                            className="inspection-decision-form"
+                            onSubmit={event => {
+                              event.preventDefault()
+                              const decision = event.nativeEvent?.submitter?.value || 'NEEDS_CORRECTION'
+                              handleHumanReview(decision)
+                            }}
+                          >
+                            <p className="inspection-decision-guidance">
+                              The AI found that the two photographs show different notebooks and neither confirms the declared SKU.
+                              The recommended action is to request corrected packing evidence and keep this shipment on hold.
+                            </p>
+                            <div className="form-group">
+                              <label htmlFor="review-notes">Decision note</label>
+                              <textarea
+                                id="review-notes"
+                                ref={reviewNotesRef}
+                                className="form-control"
+                                rows="3"
+                                maxLength={2000}
+                                defaultValue={suggestedReviewNote}
+                                onChange={event => setReviewNotes(event.target.value)}
+                                placeholder="Explain what needs to be checked or corrected."
+                              />
+                            </div>
+                            <div className="inspection-decision-actions">
+                              <button type="submit" value="NEEDS_CORRECTION" className="btn-primary" disabled={reviewSaving}>
+                                {reviewSaving ? 'Saving…' : 'Request correction'}
+                              </button>
+                              <button type="submit" value="REJECTED" className="btn-secondary" disabled={reviewSaving}>
+                                Reject inspection
+                              </button>
+                              <button type="submit" value="APPROVED" className="btn-secondary" disabled={reviewSaving}>
+                                Approve packing review
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="inspection-decision-form">
+                            <p>
+                              {!isLatestInspection
+                                ? 'A newer inspection exists for this shipment. Only the latest inspection can receive a human decision.'
+                                : inspectionDetail.inspection_status === 'APPROVED'
+                                ? 'A merchant approved this inspection. A new inspection is required to record another review.'
+                                : inspectionDetail.inspection_status === 'NEEDS_CORRECTION'
+                                ? 'Corrections are required. Return to the packing station, capture updated evidence, and submit a new inspection.'
+                                : 'This inspection was rejected. Submit a new inspection only after the underlying packing issue has been resolved.'}
+                            </p>
+                          </div>
+                        )}
+
+                        {(inspectionDetail.review_history || []).length > 0 && (
+                          <div className="inspection-review-history">
+                            <h4>Review history</h4>
+                            {inspectionDetail.review_history.map(review => (
+                              <div key={review.id} className="evidence-record-item">
+                                <strong>{review.decision.replaceAll('_', ' ')}</strong>
+                                <p>{review.notes || 'No additional notes.'}</p>
+                                <small>{review.reviewer_label} · {new Date(review.created_at).toLocaleString()}</small>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      
+
+                      <details className="inspection-technical-details">
+                        <summary>Technical evidence and full AI analysis</summary>
+                        {/* Inspection Metadata Bar */}
                       <div className="hash-display-banner">
                         <div className="hash-info">
                           <span className="hash-label">SNAPSHOT MANIFEST FINGERPRINT AT INSPECTION</span>
@@ -3385,21 +3516,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                           {inspectionDetail.photo_count} Photo{inspectionDetail.photo_count === 1 ? '' : 's'} Evaluated
                         </div>
                       </div>
-
-                      {/* AI Summary Card */}
-                      {aiResult?.inspection_summary && (
-                        <div className="ai-summary-callout">
-                          <div className="summary-callout-header">
-                            <span className="eyebrow" style={{ color: 'var(--cobalt)', margin: 0 }}>AI VISION INSPECTION SUMMARY</span>
-                            <span className={`quality-badge q-${(imageQuality.overall || 'fair').toLowerCase()}`}>
-                              Image Quality: {imageQuality.overall || 'UNKNOWN'}
-                            </span>
-                          </div>
-                          <p className="summary-callout-body">{aiResult.inspection_summary}</p>
-                        </div>
-                      )}
-
-                      {/* Expected vs Observed Quantities Table */}
+                        {/* Expected vs Observed Quantities Table */}
                       <div className="manifest-items-card">
                         <div className="items-card-header">
                           <div>
@@ -3524,50 +3641,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                           )}
                         </div>
                       </div>
-
-                      {/* Photo Evidence Records (SHA-256 and Stored Metadata) */}
-                      <div className="photo-records-card">
-                        <div className="records-header">
-                          <div>
-                            <h3>Persisted Evidence Photographs</h3>
-                            <p>
-                              Photographs are validated against magic bytes and immutably recorded with cryptographic SHA-256 digests.
-                            </p>
-                          </div>
-                          <span className="pill pill-unchecked">
-                            {inspectionDetail.photos?.length || 0} Photos Recorded
-                          </span>
-                        </div>
-
-                        <div className="evidence-records-grid">
-                          {inspectionDetail.photos?.map((photo, i) => (
-                            <div key={photo.id || i} className="evidence-record-item">
-                              <div className="evidence-record-badge">Photo #{i + 1}</div>
-                              <img
-                                className="persisted-evidence-photo"
-                                src={`${API_BASE}/api/inspections/${inspectionDetail.inspection_id}/photos/${photo.id}`}
-                                alt={`Persisted packing evidence photo ${i + 1}`}
-                                loading="lazy"
-                              />
-                              <div className="evidence-record-fields">
-                                <div className="ev-row">
-                                  <span className="ev-label">SHA-256 Digest:</span>
-                                  <code className="ev-hash" title={photo.sha256}>{photo.sha256}</code>
-                                </div>
-                                <div className="ev-row-split">
-                                  <span>MIME: <strong>{photo.mime_type}</strong></span>
-                                  <span>Size: <strong>{formatBytes(photo.size_bytes)}</strong></span>
-                                </div>
-                                <div className="ev-id-row">
-                                  <small>Record ID: <code>{photo.id}</code></small>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Engine Disclosure Disclaimer */}
+                        {/* Engine Disclosure Disclaimer */}
                       <div className="engine-disclosure-card">
                         <div className="disclosure-head">
                           <strong>AI Engine Specification: {engineMeta.type || 'GEMINI_VISION_LLM'} ({engineMeta.model || inspectionDetail.model_used})</strong>
@@ -3578,89 +3652,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                             'Visual inspection only. Sealed container contents are not verified. This result requires human review before any shipment approval or rejection decision is made.'}
                         </p>
                       </div>
-
-                      <div className="manifest-items-card" style={{ marginTop: '18px' }}>
-                        <div className="items-card-header">
-                          <div>
-                            <h3>Merchant Review Decision</h3>
-                            <p>Review the original photos and AI observations. The decision is recorded separately and never overwrites the model's observations.</p>
-                          </div>
-                          <span className={`pill ${inspectionDetail.inspection_status === 'APPROVED' ? 'pill-pass' : inspectionDetail.inspection_status === 'REJECTED' ? 'pill-blocked' : 'pill-warn'}`}>
-                            {inspectionDetail.inspection_status.replaceAll('_', ' ')}
-                          </span>
-                        </div>
-
-                        {reviewFeedback && <div className="pass-callout" role="status">{reviewFeedback}</div>}
-                        {reviewError && <div className="findings-box issues" role="alert">{reviewError}</div>}
-
-                        {canHumanReview ? (
-                          <div style={{ padding: '16px' }}>
-                            <div className="form-group">
-                              <label htmlFor="reviewer-label">Reviewer label</label>
-                              <input
-                                id="reviewer-label"
-                                className="form-control"
-                                value={reviewerLabel}
-                                maxLength={100}
-                                onChange={e => setReviewerLabel(e.target.value)}
-                                placeholder="e.g. Merchant"
-                              />
-                              <small style={{ color: 'var(--text-muted)' }}>This is a demo label, not a verified login identity.</small>
-                            </div>
-                            <div className="form-group" style={{ marginTop: '12px' }}>
-                              <label htmlFor="review-notes">Review notes</label>
-                              <textarea
-                                id="review-notes"
-                                ref={reviewNotesRef}
-                                className="form-control"
-                                rows="3"
-                                maxLength={2000}
-                                value={reviewNotes}
-                                onChange={e => setReviewNotes(e.target.value)}
-                                placeholder="Record what you checked, or explain what needs to be corrected."
-                              />
-                            </div>
-                            <div className="remediation-actions" style={{ flexWrap: 'wrap', marginTop: '14px' }}>
-                              <button type="button" className="btn-primary" disabled={reviewSaving || !reviewerLabel.trim()} onClick={() => handleHumanReview('APPROVED')}>
-                                {reviewSaving ? 'Saving…' : 'Approve packing review'}
-                              </button>
-                              <button type="button" className="btn-secondary" disabled={reviewSaving} onClick={() => handleHumanReview('NEEDS_CORRECTION')}>
-                                {reviewSaving ? 'Saving…' : 'Request correction'}
-                              </button>
-                              <button type="button" className="btn-secondary" disabled={reviewSaving} onClick={() => handleHumanReview('REJECTED')}>
-                                {reviewSaving ? 'Saving…' : 'Reject inspection'}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ padding: '16px' }}>
-                            <p>
-                              {!isLatestInspection
-                                ? 'A newer inspection exists for this shipment. Only the latest inspection can receive a human decision.'
-                                : inspectionDetail.inspection_status === 'APPROVED'
-                                ? 'A merchant approved this inspection. A new inspection is required to record another review.'
-                                : inspectionDetail.inspection_status === 'NEEDS_CORRECTION'
-                                ? 'Corrections are required. Return to the packing station, capture updated evidence, and submit a new inspection.'
-                                : 'This inspection was rejected. Submit a new inspection only after the underlying packing issue has been resolved.'}
-                            </p>
-                          </div>
-                        )}
-
-                        {(inspectionDetail.review_history || []).length > 0 && (
-                          <div style={{ padding: '0 16px 16px' }}>
-                            <h4>Review history</h4>
-                            {inspectionDetail.review_history.map(review => (
-                              <div key={review.id} className="evidence-record-item" style={{ marginTop: '8px' }}>
-                                <strong>{review.decision.replaceAll('_', ' ')}</strong>
-                                <p style={{ margin: '4px 0' }}>{review.notes || 'No additional notes.'}</p>
-                                <small>{review.reviewer_label} · {new Date(review.created_at).toLocaleString()}</small>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {selectedShipment.checkout_order_id && (
+                      </details>                      {selectedShipment.checkout_order_id && (
                         <div className="manifest-items-card" style={{ marginTop: '18px' }}>
                           <div className="items-card-header">
                             <div>
