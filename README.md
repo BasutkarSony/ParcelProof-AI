@@ -29,7 +29,7 @@ Small online merchants often handle payment, order lines, warehouse picking and 
 | Buyer checkout | A small storefront for physical merchandise with recipient and delivery details. |
 | PayPal payment | PayPal Sandbox Orders v2 checkout with server-priced item lines and verified capture. |
 | Order-derived manifest | Creates a packing manifest from the exact items and quantities in the paid order. |
-| Packing inspection | Gemini Vision compares visible packing photos with the finalized manifest and reports observations/uncertainty; the merchant makes the decision. |
+| Packing inspection | Groq Qwen Vision can inspect up to three photos when configured; Gemini handles larger photo sets and is the fallback. Both compare visible items with the finalized manifest; the merchant makes the decision. |
 | Evidence record | Stores photo hashes and the finalized manifest fingerprint with each inspection. |
 | Human review | Records an explicit merchant decision separately from model observations. |
 | PayPal tracking | Prepares and submits a tracking update to the matching Orders v2 order and capture after all required checks. |
@@ -41,19 +41,17 @@ Small online merchants often handle payment, order lines, warehouse picking and 
 3. ParcelProof creates a persistent shipment and a draft manifest from the purchased items.
 4. Merchant reviews and finalizes the manifest; its contents are fingerprinted.
 5. Before sealing the parcel, the merchant uploads up to five clear packing photographs showing the actual items.
-6. Gemini Vision compares visible items with the finalized manifest and returns structured observations and uncertainty. A 503 receives one bounded retry; a 429 is not immediately retried. An optional OpenAI fallback can run when configured.
+6. The configured vision provider compares visible items with the finalized manifest and returns structured observations and uncertainty. When `GROQ_API_KEY` is configured, Groq Qwen Vision is preferred for up to three photos; four or five photos are routed to Gemini so every uploaded image is analysed. Gemini is the fallback when Groq fails.
 7. The model never approves or rejects a shipment. A merchant reviews the original photos and model observations and records APPROVED, REJECTED or NEEDS_CORRECTION.
 8. The approved packing record remains linked to the paid order and manifest. A guarded PayPal tracking action is available in the backend, but tracking writes remain disabled by default in the hosted demo.
 
 ## AI and evidence safeguards
 
-- Gemini `gemini-3.8-flash` is the primary vision provider; Google documents this stable model as accepting image inputs and structured outputs.
-- HTTP 503 temporary service failures receive one bounded retry.
-- HTTP 429 rate/quota errors are not automatically retried. The UI tells the operator to wait for the applicable rate window or quota reset before trying again.
-- If Gemini remains unavailable, the backend uses OpenAI Vision when `OPENAI_API_KEY` is configured.
-- Both providers use the same manifest prompt and server-side response validation.
-- The fallback receives every uploaded photo, up to the existing five-photo limit.
-- Provider and model names are recorded with each inspection.
+- Groq Qwen `qwen/qwen3.8-27b` is an optional vision provider. When `GROQ_API_KEY` is set, `PACKING_VISION_PROVIDER=auto` prefers Groq for inspections containing up to three photos. Groq currently lists this model as Preview.
+- Groq accepts at most three images per request. Inspections with four or five photos are routed to Gemini; the backend never silently truncates the photo set.
+- Gemini `gemini-3.8-flash` remains the fallback provider and handles the full five-photo limit. Set `PACKING_VISION_PROVIDER=gemini` to prefer Gemini, or `groq` to prefer Groq when the photo count fits.
+- Gemini HTTP 503 temporary service failures receive one bounded retry. HTTP 429 rate/quota errors are not automatically retried.
+- Both providers use the same manifest prompt and server-side response validation. Provider and model names are recorded with each inspection.
 - Every inspection remains pending human review until a merchant decision is recorded.
 - The app distinguishes what is visible in photos from what is not visible. A sealed parcel's contents cannot be verified from its exterior.
 - Deterministic shipment checks use rules and text-pattern heuristics. They are advisory, not a PayPal eligibility decision.
@@ -92,8 +90,10 @@ copy .env.example .env
 Edit `backend/.env` and add:
 
 - `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` from a PayPal Sandbox REST app.
-- `GEMINI_API_KEY` for the primary packing-photo provider.
-- `OPENAI_API_KEY` optionally, to enable the vision fallback.
+- `GEMINI_API_KEY` for the Gemini vision fallback and for inspections containing four or five photos.
+- `GROQ_API_KEY` optionally, to use Groq Qwen Vision for inspections containing up to three photos.
+- `PACKING_VISION_PROVIDER` optionally: `auto` (default), `groq` or `gemini`.
+- `OPENAI_API_KEY` optionally, as a legacy fallback when neither Groq nor Gemini is available.
 
 Keep `PAYPAL_TRACKING_SUBMISSION_ENABLED=false`. Never commit the real `.env` file or share its credentials.
 
@@ -147,7 +147,7 @@ Set these values privately in Render. Never commit them to Git or share them in 
 | `PARCELPROOF_DEMO_USERNAME` | Demo login username. |
 | `PARCELPROOF_DEMO_PASSWORD` | A strong, unique demo password. |
 
-The Blueprint sets `SUPABASE_URL`, `SUPABASE_STORAGE_BUCKET=inspection-photos`, `DATABASE_SSLMODE=require`, `PARCELPROOF_REQUIRE_DATABASE=true`, shared demo authentication and `PAYPAL_TRACKING_SUBMISSION_ENABLED=false`. It also sets `FRONTEND_URL` from the Render service URL. `OPENAI_API_KEY` is optional and enables the fallback vision provider.
+The Blueprint sets `SUPABASE_URL`, `SUPABASE_STORAGE_BUCKET=inspection-photos`, `DATABASE_SSLMODE=require`, `PARCELPROOF_REQUIRE_DATABASE=true`, shared demo authentication and `PAYPAL_TRACKING_SUBMISSION_ENABLED=false`. It also sets `FRONTEND_URL` from the Render service URL. `GROQ_API_KEY` is optional for Groq Qwen Vision; add it privately in Render to activate the Groq path. `PACKING_VISION_PROVIDER=auto` is the default.
 
 **Important:** the hosted app fails startup if `DATABASE_URL` is missing; this prevents silently using an ephemeral SQLite file on Render Free. Local development continues to use SQLite unless `DATABASE_URL` is set.
 

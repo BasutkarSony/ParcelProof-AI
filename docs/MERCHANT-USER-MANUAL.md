@@ -63,9 +63,9 @@ Finalization locks the manifest against normal edits. Check quantities and descr
 5. Review the selected photo thumbnails/count, then choose **Run AI Vision Inspection**.
 6. Wait for the inspection result. If a temporary provider error offers **Retry Inspection**, retry only after checking the message. Validation errors such as an unfinalized manifest are not retryable; fix the underlying issue first.
 
-Gemini Vision is the primary provider. The configured model is `gemini-3.8-flash`, which Google lists as a stable model supporting image input and structured outputs.
+The app selects a vision provider on the server. When Groq is configured and the inspection contains up to three photos, `qwen/qwen3.8-27b` can be used. Groq currently lists this model as Preview and limits each request to three images. If four or five photos are uploaded, the app uses Gemini instead so every photo is analysed. Gemini `gemini-3.8-flash` is also the fallback when Groq is unavailable.
 
-- **HTTP 503:** temporary provider unavailability/overload. The backend makes one bounded retry. If it still fails, the UI offers **Retry Inspection** after the provider recovers.
+- **HTTP 503 from Gemini:** temporary provider unavailability/overload. The backend makes one bounded retry. If it still fails, the UI offers **Retry Inspection** after the provider recovers.
 - **HTTP 429:** a short-window rate limit or exhausted daily quota. The backend does not send an immediate second request. Check the Google AI project usage details, wait for the applicable limit to reset, then use **Retry after limit resets**. A daily quota cannot be fixed by repeating the request.
 - **Other errors:** model, credentials, permissions or request validation need to be corrected; the UI does not offer a transient retry for these cases.
 
