@@ -7,7 +7,8 @@ from decimal import Decimal
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, RedirectResponse
+from urllib.parse import urlencode
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from app.validator import validate_order
@@ -534,9 +535,8 @@ def paypal_verify_connection():
         raise HTTPException(status_code=502, detail=f"PayPal Sandbox OAuth failed: {str(exc)}")
 
 
-@app.post("/api/inspections/{inspection_id}/review")
-def review_packing_inspection(inspection_id: str, payload: dict):
-    """Record an explicit human decision; Gemini output is never approval."""
+def _record_packing_review(inspection_id: str, payload: dict) -> dict:
+    """Shared validation and persistence for JSON and browser-native review submissions."""
     inspection = get_inspection(inspection_id)
     if inspection is None:
         raise HTTPException(status_code=404, detail="Inspection not found.")
@@ -575,6 +575,43 @@ def review_packing_inspection(inspection_id: str, payload: dict):
         "review_history": reviewed["review_history"],
         "reviewed_at": reviewed["updated_at"],
     }
+
+
+@app.post("/api/inspections/{inspection_id}/review")
+def review_packing_inspection(inspection_id: str, payload: dict):
+    """JSON API for explicit human decisions; AI output is never approval."""
+    return _record_packing_review(inspection_id, payload)
+
+
+@app.post("/api/inspections/{inspection_id}/review/form")
+def review_packing_inspection_form(
+    inspection_id: str,
+    decision: str = Form(...),
+    reviewer_label: str = Form("Merchant"),
+    notes: str = Form(""),
+):
+    """Native browser form endpoint; works even when client-side event handling fails."""
+    try:
+        result = _record_packing_review(
+            inspection_id,
+            {
+                "decision": decision,
+                "reviewer_label": reviewer_label,
+                "notes": notes,
+            },
+        )
+    except HTTPException as exc:
+        query = urlencode({
+            "review_error": str(exc.detail),
+            "inspection_id": inspection_id,
+        })
+        return RedirectResponse(url=f"/inspections?{query}", status_code=303)
+
+    query = urlencode({
+        "review_status": result["inspection_status"],
+        "inspection_id": inspection_id,
+    })
+    return RedirectResponse(url=f"/inspections?{query}", status_code=303)
 
 
 @app.post("/api/shipments/{shipment_order_id}/submit-tracking")
