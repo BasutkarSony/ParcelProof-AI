@@ -1,4 +1,4 @@
-"""AI vision packing inspection service with Gemini primary and OpenAI fallback.
+"""AI vision packing inspection service with Groq/Gemini selection and OpenAI fallback.
 
 This module isolates external vision-model calls from the deterministic shipment evidence engine (ai_analyzer.py).
 
@@ -13,8 +13,10 @@ Safety guarantees enforced here:
   or included in any response body.
 - Provider responses are validated for structure before persistence; malformed
   responses raise RuntimeError.
-- manifest_item_id values in Gemini output are cross-checked against the
+- manifest_item_id values from every provider are cross-checked against the
   actual finalized manifest items before the result is trusted.
+- Groq Qwen vision is limited to three images per request; larger photo sets
+  are routed to Gemini rather than silently truncating evidence.
 """
 
 import base64
@@ -426,6 +428,117 @@ def _run_openai_inspection(manifest: dict, photo_metas: list[dict], api_key: str
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Groq Qwen Vision provider
+# ---------------------------------------------------------------------------
+
+def _run_groq_inspection(manifest: dict, photo_metas: list[dict], api_key: str) -> dict:
+    """Run a packing inspection through Groq's Qwen vision model.
+
+    Qwen 3.8 27B accepts at most three images per request. Never truncate a
+    merchant's photo set: callers must route larger sets to Gemini instead.
+    """
+    if not photo_metas:
+        raise RuntimeError("Groq vision inspection requires at least one packing photo.")
+    if len(photo_metas) > 3:
+        raise RuntimeError(
+            "Groq Qwen vision accepts up to 3 images per request. "
+            "Use Gemini for this inspection so every uploaded photo is analysed."
+        )
+
+    model = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b").strip() or "qwen/qwen3.8-27b"
+    image_parts = []
+    for meta in photo_metas:
+        raw = meta.get("data") if isinstance(meta.get("data"), bytes) else Path(meta["path"]).read_bytes()
+        encoded = base64.b64encode(raw).decode("ascii")
+        image_parts.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{meta['mime_type']};base64,{encoded}",
+                "detail": "high",
+            },
+        })
+
+    payload = {
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": [{"type": "text", "text": _build_prompt(manifest)}] + image_parts,
+        }],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "packing_inspection",
+                "strict": True,
+                "schema": _openai_response_schema(),
+            },
+        },
+    }
+
+    request = urllib.request.Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        timeout = max(15, min(int(os.getenv("GROQ_VISION_TIMEOUT_SECONDS", "90")), 180))
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            message = f"Groq rejected the configured API key (HTTP {exc.code})."
+        elif exc.code == 404:
+            message = (
+                f"Groq could not find model {model!r} (HTTP 404). "
+                "Check GROQ_VISION_MODEL and model access."
+            )
+        elif exc.code == 429:
+            message = (
+                "Groq vision rate or quota limit reached (HTTP 429). "
+                "Check the Groq console limits and retry after the applicable reset."
+            )
+        elif exc.code >= 500:
+            message = f"Groq vision is temporarily unavailable (HTTP {exc.code})."
+        else:
+            message = f"Groq rejected the vision request (HTTP {exc.code})."
+        raise RuntimeError(message) from None
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        raise RuntimeError("Groq vision request could not complete. Check provider availability.") from None
+
+    try:
+        message = response_data["choices"][0]["message"]
+        if message.get("refusal"):
+            raise RuntimeError("Groq declined the packing inspection request.")
+        ai_result = json.loads(message["content"])
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise RuntimeError("Groq vision returned an unexpected response format.") from None
+
+    _validate_ai_result(ai_result, manifest)
+    ai_result["human_review_required"] = True
+
+    return {
+        "ai_result": ai_result,
+        "model_used": model,
+        "engine_metadata": {
+            "type": "GROQ_VISION_LLM",
+            "model": model,
+            "auditable": False,
+            "zero_hallucination": False,
+            "disclaimer": (
+                "Visual inspection only. Sealed container contents are not "
+                "verified. This result requires human review before any "
+                "shipment approval or rejection decision is made."
+            ),
+        },
+    }
+
+
+
 def _is_retryable_gemini_error(exc: Exception) -> bool:
     """Retry transient provider outages, but never hammer rate/quota-limited requests."""
     code = getattr(exc, "code", None)
@@ -615,8 +728,8 @@ def _validate_ai_result(ai_result: dict, manifest: dict) -> None:
             )
 
 
-def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
-    """Run a packing inspection with Gemini primary and optional OpenAI fallback.
+def _run_gemini_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
+    """Run a packing inspection with Gemini and optional OpenAI fallback.
 
     Gemini is attempted first. A single short retry is made for transient server
     errors. If Gemini remains unavailable, OPENAI_API_KEY enables a vision
@@ -722,4 +835,84 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
             ),
         },
     }
+
+
+def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
+    """Select a configured vision provider without dropping uploaded evidence.
+
+    Provider order:
+    - PACKING_VISION_PROVIDER=groq: Groq first, Gemini fallback.
+    - PACKING_VISION_PROVIDER=gemini: Gemini first, Groq fallback.
+    - auto (default): Groq first when configured and the request has at most
+      three photos; otherwise Gemini first.
+    - Larger photo sets are never truncated to satisfy Groq's three-image cap.
+    """
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    preference = os.getenv("PACKING_VISION_PROVIDER", "auto").strip().lower() or "auto"
+
+    if preference not in {"auto", "groq", "gemini"}:
+        raise RuntimeError(
+            "PACKING_VISION_PROVIDER must be one of: auto, groq, gemini."
+        )
+
+    groq_can_process = len(photo_metas) <= 3
+    groq_first = preference == "groq" or (
+        preference == "auto" and bool(groq_key) and groq_can_process
+    )
+    failures = []
+
+    def try_groq():
+        if not groq_key:
+            raise RuntimeError("GROQ_API_KEY is not configured.")
+        if not groq_can_process:
+            raise RuntimeError(
+                "Groq Qwen vision accepts at most 3 images. Gemini is required "
+                "to analyse all photos in this inspection."
+            )
+        return _run_groq_inspection(manifest, photo_metas, groq_key)
+
+    if groq_first and groq_key:
+        try:
+            return try_groq()
+        except RuntimeError as exc:
+            failures.append(str(exc))
+
+    if gemini_key:
+        try:
+            return _run_gemini_inspection(manifest, photo_metas)
+        except RuntimeError as exc:
+            failures.append(str(exc))
+
+    if not groq_first and groq_key:
+        try:
+            return try_groq()
+        except RuntimeError as exc:
+            failures.append(str(exc))
+
+    # Preserve the existing optional OpenAI fallback for installations that
+    # have not configured either Groq or Gemini.
+    if openai_key and not gemini_key:
+        return _run_openai_inspection(manifest, photo_metas, openai_key)
+
+    if failures:
+        combined = " ".join(failures)
+        status_code = 429 if "HTTP 429" in combined else 503
+        raise GeminiUnavailableError(
+            "No configured vision provider completed the inspection. " + combined,
+            status_code=status_code,
+        ) from None
+
+    if groq_key and not groq_can_process and not gemini_key:
+        raise GeminiUnavailableError(
+            "This inspection contains more than three photos. Groq Qwen accepts "
+            "up to three images per request; configure GEMINI_API_KEY to inspect "
+            "the complete five-photo evidence set.",
+        )
+
+    raise GeminiUnavailableError(
+        "No vision provider is configured. Add GROQ_API_KEY or GEMINI_API_KEY "
+        "to backend/.env. OpenAI remains available as an optional legacy fallback."
+    )
 
