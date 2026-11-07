@@ -173,9 +173,13 @@ PayPal OAuth was verified in Sandbox and the tracking write gate displayed as lo
 
 The deterministic shipment analyzer reports shipment-record completeness only. It does not calculate Seller Protection eligibility. PayPal makes its own decision under the requirements applicable to the seller, country, account, transaction and claim.
 
-## Payment-to-export document workflow
+## Secondary prototype: export-document reconciliation
 
-The shipment workspace supports this sequence for a real PayPal-linked shipment:
+This is a separate, optional document-consistency capability. It is **not part of ParcelProof AI's primary packing-verification workflow or the main hackathon demonstration**. The main merchant journey remains PayPal checkout → order-derived packing manifest → pre-seal packing photographs → AI observations → human review.
+
+The document workflow's API and storage implementation are retained for a later, separately validated use case. It should not interrupt or gate the packing-verification journey.
+
+For a real PayPal-linked shipment, the secondary capability supports:
 
 1. Upload a commercial invoice or packing list (PDF, JPEG, PNG or WebP; 10 MB maximum) to the private `shipment-documents` bucket.
 2. Create an unverified extraction draft with Gemini when configured. If extraction is unavailable, the original remains saved for manual entry.

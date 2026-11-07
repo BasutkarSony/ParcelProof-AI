@@ -144,19 +144,19 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
         <div className="brand-icon" aria-hidden="true">P</div>
         <div className="brand-title">
           <strong>ParcelProof AI</strong>
-          <small>EXPORT DOCUMENT CONTROL</small>
+          <small>PAYPAL PACKING VERIFICATION</small>
         </div>
       </div>
 
       <nav aria-label="Main navigation">
-        <div className="nav-section">EXPORT WORKFLOW</div>
+        <div className="nav-section">PAYPAL PACKING WORKFLOW</div>
         <button
           className={`nav-item nav-item-btn ${isReview ? 'active' : ''}`}
           onClick={() => navigateTo('/')}
           aria-current={isReview ? 'page' : undefined}
         >
           <span aria-hidden="true">▣</span>
-          <span>Reconciliation Queue</span>
+          <span>Shipment Review</span>
           <span className="nav-badge" aria-label={`${ordersCount} shipments`}>{ordersCount}</span>
         </button>
         <button
@@ -165,7 +165,7 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
           aria-current={isManifests ? 'page' : undefined}
         >
           <span aria-hidden="true"><ManifestIcon /></span>
-          <span>Shipments &amp; Documents</span>
+          <span>Manifests</span>
         </button>
         <button
           className={`nav-item nav-item-btn ${isPacking ? 'active' : ''}`}
@@ -181,7 +181,7 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
           aria-current={isInspections ? 'page' : undefined}
         >
           <span aria-hidden="true"><EyeIcon /></span>
-          <span>Inspection History</span>
+          <span>AI Inspections</span>
         </button>
 
         <div className="nav-section" style={{ marginTop: '16px' }}>SANDBOX TOOLS</div>
@@ -198,16 +198,16 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
       <div className="side-card">
         <div className="side-card-header">
           <span className="pulse" aria-hidden="true"></span>
-          <span>Your export checklist</span>
+          <span>Your packing checklist</span>
         </div>
         <div className="side-card-body">
-          Match each paid order to its shipment manifest and commercial invoice or packing list. Review any differences before dispatch.
+          Start with the paid order. Confirm the packing manifest, photograph the items before sealing, then review the AI observations and record your decision.
         </div>
       </div>
 
       <div className="sidebar-footer">
         <strong>PARCELPROOF</strong>
-        <p>Keep the payment, shipment and export paperwork in sync.</p>
+        <p>Payment-linked packing checks with a human decision.</p>
       </div>
     </aside>
   )
@@ -1065,23 +1065,23 @@ function ShipmentReviewMain({
             </span>
           </button>
           <div className="pill-status">
-            <span style={{ color: '#275619', fontWeight: 700 }}>PayPal updates: Off</span>
+            <span style={{ color: '#275619', fontWeight: 700 }}>Tracking submission: Off</span>
           </div>
         </div>
       </header>
 
-      <section className="hero export-hero" aria-label="ParcelProof payment-to-export workflow">
+      <section className="hero export-hero" aria-label="PayPal-connected packing verification workflow">
         <div className="hero-copy">
           <div className="eyebrow">
-            <span aria-hidden="true">●</span> EXPORT DOCUMENT REVIEW
+            <span aria-hidden="true">●</span> PAYPAL-CONNECTED PACKING VERIFICATION
           </div>
           <h1>
-            Make every export
+            Catch packing mistakes
             <br />
-            <span>document match.</span>
+            <span>before dispatch.</span>
           </h1>
           <p>
-            Bring the PayPal payment, shipment manifest and export documents into one review. Catch differences in products, quantities, values and recipient details before dispatch.
+            ParcelProof links a captured PayPal payment to the exact items ordered, then compares pre-seal packing photos with the finalized manifest. AI highlights possible discrepancies; you make the final decision.
           </p>
           <div className="export-hero-actions">
             {nextActionShipment ? (
@@ -1089,36 +1089,36 @@ function ShipmentReviewMain({
                 className="btn-primary"
                 onClick={() => navigateTo('/manifests', { shipmentId: nextActionShipment.order_id })}
               >
-                Review {nextActionShipment.order_id} →
+                Continue {nextActionShipment.order_id} →
               </button>
             ) : (
               <button className="btn-primary" onClick={() => navigateTo('/checkout')}>
                 Create PayPal Sandbox checkout →
               </button>
             )}
-            <span>You review every result. Nothing is sent to PayPal automatically.</span>
+            <span>AI observations are advisory. A merchant reviews the photos and decides.</span>
           </div>
         </div>
 
-        <div className="hero-art-card export-flow-card" aria-label="Three records reviewed together">
+        <div className="hero-art-card export-flow-card" aria-label="Payment, packing manifest and pre-seal photo review steps">
           <div className="export-flow-step">
             <span>01</span>
-            <div><strong>PayPal payment</strong><small>What your customer paid for</small></div>
-            <b>Order</b>
+            <div><strong>PayPal payment</strong><small>Captured order and purchased items</small></div>
+            <b>Verified</b>
           </div>
           <div className="export-flow-connector"></div>
           <div className="export-flow-step">
             <span>02</span>
-            <div><strong>Shipment manifest</strong><small>Products and quantities to ship</small></div>
-            <b>Manifest</b>
+            <div><strong>Packing manifest</strong><small>Confirm SKUs and quantities</small></div>
+            <b>Finalized</b>
           </div>
           <div className="export-flow-connector"></div>
           <div className="export-flow-step">
             <span>03</span>
-            <div><strong>Export documents</strong><small>Commercial invoice or packing list</small></div>
-            <b>Review</b>
+            <div><strong>Packing photos</strong><small>AI observations before sealing</small></div>
+            <b>Human review</b>
           </div>
-          <div className="art-tag">MATCH · MISMATCH · REVIEW</div>
+          <div className="art-tag">PAYMENT · MANIFEST · PHOTOS · HUMAN DECISION</div>
         </div>
       </section>
 
@@ -1126,9 +1126,9 @@ function ShipmentReviewMain({
         <div className="arch-info">
           <div className="arch-badge">HOW IT WORKS</div>
           <div className="arch-text">
-            <strong>One shipment. Three records to keep in sync.</strong>
+            <strong>One paid order. One traceable packing review.</strong>
             <p>
-              We compare the captured order with the finalized manifest and the invoice or packing list you confirm. Differences are grouped into clear checks, with the original document and review history kept alongside the shipment.
+              The paid order becomes the packing checklist. Before sealing the parcel, the operator photographs the contents. AI compares visible items with the finalized manifest, while a merchant reviews the original photos and makes the decision.
             </p>
           </div>
         </div>
@@ -1137,42 +1137,42 @@ function ShipmentReviewMain({
           onClick={() => setShowArchDetails(prev => !prev)}
           aria-expanded={showArchDetails}
         >
-          {showArchDetails ? 'Hide details ▲' : 'What gets checked ▼'}
+          {showArchDetails ? 'Hide details ▲' : 'What the packing review checks ▼'}
         </button>
       </section>
 
       {showArchDetails && (
         <div className="arch-details-drawer export-limits">
-          <strong>What these checks cover</strong>
+          <strong>What the packing review checks</strong>
           <div className="arch-grid">
-            <div className="arch-card"><strong>Carrier events</strong>Live carrier scans are not currently fetched or independently verified.</div>
-            <div className="arch-card"><strong>PayPal protection</strong>A reconciliation result does not determine Seller Protection eligibility or a dispute outcome.</div>
-            <div className="arch-card"><strong>Customs and compliance</strong>The workflow does not provide customs clearance, HS-code validation or legal export advice.</div>
-            <div className="arch-card"><strong>AI extraction</strong>AI creates a draft only. A merchant must review and confirm document fields.</div>
+            <div className="arch-card"><strong>Visible items</strong>Compares what can be seen in the packing photos with the finalized manifest.</div>
+            <div className="arch-card"><strong>Possible discrepancies</strong>Highlights items or quantities that may be missing, incorrect or uncertain.</div>
+            <div className="arch-card"><strong>Evidence record</strong>Keeps the photo references and manifest fingerprint with the inspection.</div>
+            <div className="arch-card"><strong>Human decision</strong>A merchant reviews the originals and approves, requests correction or rejects the packing review.</div>
           </div>
         </div>
       )}
 
-      <section className="stats-grid export-stats-grid" aria-label="Export workflow overview">
+      <section className="stats-grid export-stats-grid" aria-label="Packing workflow overview">
         <div className="stat-card">
           <span>PAYPAL-LINKED SHIPMENTS</span>
           <strong>{paidPayPalOrders.length.toString().padStart(2, '0')}</strong>
           <small>Paid orders with a shipment record</small>
         </div>
         <div className="stat-card">
-          <span>NEED SHIPPING DETAILS</span>
+          <span>NEED DISPATCH DETAILS</span>
           <strong className={shipmentDetailsMissing > 0 ? 'red' : 'green'}>{shipmentDetailsMissing.toString().padStart(2, '0')}</strong>
-          <small>Tracking number or carrier not added yet</small>
+          <small>Carrier or tracking details still need to be added</small>
         </div>
         <div className="stat-card">
-          <span>EXPORT DOCUMENT TYPES</span>
-          <strong>02</strong>
-          <small>Commercial invoice and packing list</small>
+          <span>PACKING PHOTOS</span>
+          <strong>1–5</strong>
+          <small>Photos reviewed before the parcel is sealed</small>
         </div>
         <div className="stat-card">
-          <span>FINAL REVIEW</span>
-          <strong className="export-stat-word">YOU</strong>
-          <small>You confirm the document fields and review the result</small>
+          <span>PACKING DECISION</span>
+          <strong className="export-stat-word">HUMAN</strong>
+          <small>A merchant reviews AI observations and decides</small>
         </div>
       </section>
 
@@ -1180,7 +1180,7 @@ function ShipmentReviewMain({
         <div className="queue-title">
           <div className="eyebrow">YOUR WORKSPACE</div>
           <h2>Shipments to review</h2>
-          <p>Select a paid order to check its shipment manifest and export documents.</p>
+          <p>Select a paid order to confirm its manifest, check the packed items and record a human review.</p>
         </div>
       </section>
 
@@ -1239,7 +1239,7 @@ function ShipmentReviewMain({
       ) : filteredOrders.length === 0 ? (
         <div className="order-card" style={{ textAlign: 'center', padding: '40px' }} role="status">
           {activeTab === 'paypal'
-            ? 'No PayPal-linked shipments yet. Create a Sandbox checkout to start an export record.'
+            ? 'No PayPal-linked shipments yet. Create a Sandbox checkout to start a packing record.'
             : activeTab === 'delivered'
             ? 'No PayPal-linked shipments are marked delivered yet.'
             : 'No sample records match this filter.'}
@@ -1362,7 +1362,7 @@ function ShipmentReviewMain({
                 <div className="card-footer-row">
                   <span>
                     {order.checkout_order_id
-                      ? 'Payment received · Export review is next'
+                      ? 'Payment captured · Review the packing manifest next'
                       : 'Sample record · Not a PayPal checkout'}
                   </span>
                   <div className="card-footer-actions">
@@ -1725,12 +1725,7 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
                       Deterministic manifest hash binds declared items, quantities, and values. Manifest is immutably locked against tampering.
                     </small>
                   </div>
-                  <button
-                    className="btn-primary"
-                    onClick={() => navigateTo('/packing', { shipmentId: selectedShipment.order_id })}
-                  >
-                    Open in Packing Station →
-                  </button>
+
                 </div>
               )}
 
@@ -1948,9 +1943,6 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
                   </>
                 )}
               </div>
-              {isFinalized && selectedShipment.checkout_order_id && (
-                <ExportDocumentWorkflow shipment={selectedShipment} />
-              )}
             </>
           ) : (
             <div className="checkout-state-box" style={{ padding: '60px' }}>

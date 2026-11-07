@@ -16,11 +16,11 @@ For local development, demo authentication is normally disabled. Follow the setu
 
 ## 3. Main navigation
 
-- **Shipment Review** — view shipment records and run the available evidence checks.
-- **Manifests** — select a shipment and create, edit or finalize its product manifest.
-- **Packing Station** — select a shipment, review its finalized manifest and upload packing photos for AI inspection.
-- **AI Inspections** — view inspection records, inspect photos and model observations, record a human decision, and view the guarded tracking workflow.
-- **New Checkout** — open the sample storefront and create a PayPal Sandbox checkout.
+- **Shipment Review** — view PayPal-linked shipment records and select the order to work on.
+- **Manifests** — confirm the order-derived products and quantities, then finalize the packing manifest.
+- **Packing Station** — review the finalized manifest, photograph the actual items before sealing, and run AI vision inspection.
+- **AI Inspections** — review original photos and AI observations, then approve, request correction or reject the packing review. The guarded tracking workflow is shown here.
+- **Sandbox Checkout** — create a PayPal Sandbox payment for a physical-goods order.
 
 ## 4. Create a test order
 
