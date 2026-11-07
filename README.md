@@ -28,13 +28,16 @@ Small online merchants often handle payment, order lines, warehouse picking and 
 |---|---|
 | Buyer checkout | A small storefront for physical merchandise with recipient and delivery details. |
 | PayPal payment | PayPal Sandbox Orders v2 checkout with server-priced item lines and verified capture. |
-| Order-derived manifest | Creates a packing manifest from the exact items and quantities in the paid order. |
+| Order-derived manifest | Creates a packing manifest from the exact items and quantities in the paid order, using the catalogue's detailed product description. |
+| Product identity profile | Stores one optional private reference image and GTIN per catalogue SKU. These references are reused for future packing inspections, not re-photographed per order. |
 | Packing inspection | Groq Qwen Vision can inspect up to three photos when configured; Gemini handles larger photo sets and is the fallback. Both compare visible items with the finalized manifest description; the merchant makes the decision. One overview photo is usually enough, with detail photos only when useful. |
 | Evidence record | Stores photo hashes and the finalized manifest fingerprint with each inspection. |
 | Human review | Records an explicit merchant decision separately from model observations. |
 | PayPal tracking | Prepares and submits a tracking update to the matching Orders v2 order and capture after all required checks. |
 
 ## Workflow
+
+Before a SKU is fulfilled for the first time, the merchant can save a detailed description, one reference image and an optional GTIN in **Product Catalogue**. This is one-time catalogue setup; it is not part of each order's packing-photo routine.
 
 1. Buyer selects merchandise, enters recipient details and approves a PayPal Sandbox payment.
 2. Backend verifies the completed PayPal capture, amount, currency and order linkage.
@@ -54,6 +57,7 @@ Small online merchants often handle payment, order lines, warehouse picking and 
 - Both providers use the same manifest prompt and server-side response validation. Provider and model names are recorded with each inspection.
 - Every inspection remains pending human review until a merchant decision is recorded.
 - The app distinguishes what is visible in photos from what is not visible. A sealed parcel's contents cannot be verified from its exterior.
+- Saved product reference images are supplied as labelled catalogue context, separately from packing photos, and are never counted as packed units. The GTIN is optional metadata; the current app validates its check digit but does not optically scan barcode bars.
 - A merchant SKU is an internal catalogue identifier; the model is not expected to read it from the physical product. Product matching uses the manifest description and visible evidence, and ambiguous cases should remain uncertain.
 - Deterministic shipment checks use rules and text-pattern heuristics. They are advisory, not a PayPal eligibility decision.
 
@@ -249,7 +253,7 @@ ParcelProof AI is a hackathon prototype, not an official PayPal product.
 
 - Shipment evidence checks use deterministic rules and text-pattern heuristics. Packing-photo observations use Gemini Vision, with an optional OpenAI Vision fallback.
 - Vision-model outputs can be wrong and require human review.
-- The current catalogue does not store product reference images or barcode/GTIN identifiers. The model cannot prove an exact internal SKU from a generic description or photograph alone; it can only compare the visible appearance with the manifest description.
+- Product reference images and optional GTINs can be saved once per catalogue SKU. Visual comparison supports product checking but does not prove an exact SKU, and GTIN digits are entered by the merchant rather than optically decoded by the app.
 - A photograph cannot prove the contents of a sealed package.
 - The hosted demo uses one shared password, not individual merchant accounts or role-based access control; reviewer labels are still self-entered demo labels, not verified identities.
 - Text entered by a merchant is not independent proof from a carrier.

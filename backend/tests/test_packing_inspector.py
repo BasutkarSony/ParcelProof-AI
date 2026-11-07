@@ -160,6 +160,23 @@ class PromptConstructionTests(unittest.TestCase):
         self.assertIn("use result=UNCERTAIN rather than inventing a mismatch", prompt)
 
 
+    def test_reference_images_are_labelled_as_catalogue_context_not_packed_items(self):
+        reference_metas = [{
+            "sku": "NOTE-A5-003",
+            "data": _make_jpeg(),
+            "mime_type": "image/jpeg",
+        }]
+        product_context = [{
+            "sku": "NOTE-A5-003",
+            "barcode_gtin": "4006381333931",
+            "reference_image_status": "LOADED",
+        }]
+        prompt = self.pi._build_prompt(self.manifest, reference_metas, product_context)
+        self.assertIn("Catalogue reference image 1 belongs to SKU NOTE-A5-003", prompt)
+        self.assertIn("NOT items physically packed", prompt)
+        self.assertIn("barcode was scanned", prompt)
+        self.assertIn("All remaining images are the actual packing photographs", prompt)
+
 # ---------------------------------------------------------------------------
 # Packing inspector unit tests (no DB, no HTTP)
 # ---------------------------------------------------------------------------
@@ -1643,6 +1660,41 @@ class GroqProviderTests(unittest.TestCase):
         self.assertEqual(result["engine_metadata"]["type"], "GROQ_VISION_LLM")
         mock_groq.assert_called_once()
         mock_gemini.assert_not_called()
+
+    def test_catalogue_reference_images_count_toward_groq_three_image_limit(self):
+        import app.packing_inspector as pi
+
+        gemini_result = {
+            "ai_result": _ai_result_fixture(["item-1"]),
+            "model_used": "gemini-reference-test",
+            "engine_metadata": {"type": "GEMINI_VISION_LLM"},
+        }
+        references = [{
+            "sku": f"SKU-{index}",
+            "data": _make_jpeg(),
+            "mime_type": "image/jpeg",
+        } for index in range(2)]
+        with patch.dict(os.environ, {
+            "GROQ_API_KEY": "fake-groq-key",
+            "GEMINI_API_KEY": "fake-gemini-key",
+            "OPENAI_API_KEY": "",
+            "PACKING_VISION_PROVIDER": "auto",
+        }, clear=False):
+            with patch("app.packing_inspector._run_groq_inspection") as mock_groq:
+                with patch(
+                    "app.packing_inspector._run_gemini_inspection",
+                    return_value=gemini_result,
+                ) as mock_gemini:
+                    result = pi.run_inspection(
+                        self.manifest,
+                        self.photos[:2],
+                        references,
+                        [{"sku": "SKU-0", "reference_image_status": "LOADED"}],
+                    )
+
+        self.assertEqual(result["model_used"], "gemini-reference-test")
+        mock_groq.assert_not_called()
+        mock_gemini.assert_called_once()
 
     def test_groq_failure_falls_back_to_gemini(self):
         import app.packing_inspector as pi

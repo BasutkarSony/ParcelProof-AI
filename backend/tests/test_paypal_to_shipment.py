@@ -427,7 +427,10 @@ class PayPalToShipmentIntegrationTests(unittest.TestCase):
         self.assertEqual(manifest["shipment_order_id"], shipment_order_id)
         self.assertEqual(len(manifest["items"]), 2)
         by_sku = {item["sku"]: item for item in manifest["items"]}
-        self.assertEqual(by_sku["MUG-CER-001"]["description"], "Ceramic Coffee Mug")
+        self.assertEqual(
+            by_sku["MUG-CER-001"]["description"],
+            "Stoneware coffee mug with a glazed finish.",
+        )
         self.assertEqual(by_sku["MUG-CER-001"]["expected_qty"], 2)
         self.assertTrue(by_sku["MUG-CER-001"]["fragile"])
         self.assertEqual(by_sku["TOTE-COT-002"]["expected_qty"], 1)

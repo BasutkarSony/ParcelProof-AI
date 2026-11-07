@@ -55,6 +55,75 @@ class StoreTests(unittest.TestCase):
             self.assertIsNotNone(p["description"])
             Decimal(p["price"])
 
+    def test_catalogue_identity_profile_is_saved_and_returned(self):
+        profile = store.update_product_identity_profile(
+            sku="NOTE-A5-003",
+            description="A5 hardcover notebook, navy linen cover, elastic strap, 160 ruled pages.",
+            barcode_gtin="4006381333931",
+            reference_image_path="catalogue/notebook/reference.jpg",
+            reference_image_mime_type="image/jpeg",
+        )
+        self.assertEqual(profile["barcode_gtin"], "4006381333931")
+        self.assertEqual(profile["reference_image_path"], "catalogue/notebook/reference.jpg")
+        self.assertEqual(profile["reference_image_mime_type"], "image/jpeg")
+
+        catalogue_item = {item["sku"]: item for item in get_catalogue()}["NOTE-A5-003"]
+        self.assertTrue(catalogue_item["has_reference_image"])
+        self.assertEqual(catalogue_item["barcode_gtin"], "4006381333931")
+
+    def test_updating_gtin_and_description_preserves_saved_reference_image(self):
+        store.update_product_identity_profile(
+            sku="MUG-CER-001",
+            description="Stoneware mug with a cobalt-blue glaze.",
+            barcode_gtin="4006381333931",
+            reference_image_path="catalogue/mug/reference.jpg",
+            reference_image_mime_type="image/jpeg",
+        )
+        profile = store.update_product_identity_profile(
+            sku="MUG-CER-001",
+            description="Stoneware mug with cobalt-blue glaze and 350 ml capacity.",
+            barcode_gtin="4006381333931",
+        )
+        self.assertEqual(profile["reference_image_path"], "catalogue/mug/reference.jpg")
+        self.assertEqual(profile["reference_image_mime_type"], "image/jpeg")
+
+    def test_identity_profile_rejects_unknown_or_inactive_sku(self):
+        with self.assertRaisesRegex(ValueError, "not found"):
+            store.update_product_identity_profile(
+                sku="NOT-A-REAL-SKU",
+                description="Unknown item",
+                barcode_gtin=None,
+            )
+
+
+    def test_paid_order_manifest_uses_catalogue_identity_description(self):
+        store.update_product_identity_profile(
+            sku="NOTE-A5-003",
+            description="A5 ruled notebook with navy textured hardcover, elastic strap and 160 pages.",
+            barcode_gtin=None,
+        )
+        order = create_order([{"sku": "NOTE-A5-003", "quantity": 1}])
+        paypal_order_id = "PAYPAL-MANIFEST-DESCRIPTION-1"
+        capture_id = "CAPTURE-MANIFEST-DESCRIPTION-1"
+        store.set_paypal_order_id(order["id"], paypal_order_id)
+        store.set_capture(order["id"], capture_id, "PAID")
+        shipment = store.create_shipment_for_order(
+            checkout_order_id=order["id"],
+            paypal_order_id=paypal_order_id,
+            paypal_capture_id=capture_id,
+            amount=order["total"],
+            currency="USD",
+        )
+
+        manifest = store.create_manifest_from_checkout_order(shipment["order_id"], order["id"])
+
+        self.assertEqual(
+            manifest["items"][0]["description"],
+            "A5 ruled notebook with navy textured hardcover, elastic strap and 160 pages.",
+        )
+        self.assertEqual(manifest["items"][0]["sku"], "NOTE-A5-003")
+
+
     def test_catalogue_prices_match_decimal(self):
         products = {p["sku"]: p for p in get_catalogue()}
         self.assertEqual(Decimal(products["MUG-CER-001"]["price"]), Decimal("18.00"))

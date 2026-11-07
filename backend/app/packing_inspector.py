@@ -220,8 +220,14 @@ _INSPECTION_SCHEMA = {
 }
 
 
-def _build_prompt(manifest: dict) -> str:
-    """Build the shared structured inspection prompt for every vision provider."""
+def _build_prompt(
+    manifest: dict,
+    reference_metas: list[dict] | None = None,
+    product_context: list[dict] | None = None,
+) -> str:
+    """Build the shared prompt for packing evidence and labelled catalogue references."""
+    reference_metas = reference_metas or []
+    product_context = product_context or []
     items_text = "\n".join(
         "  - Item ID: {id} | SKU: {sku} | Description: {desc} | "
         "Expected qty: {qty} | Fragile: {fragile}".format(
@@ -233,51 +239,81 @@ def _build_prompt(manifest: dict) -> str:
         )
         for item in manifest["items"]
     )
+    profile_lines = []
+    for profile in product_context:
+        gtin = profile.get("barcode_gtin") or "not supplied"
+        status = profile.get("reference_image_status", "NOT_CONFIGURED")
+        profile_lines.append(
+            f"  - SKU {profile['sku']} | catalogue GTIN: {gtin} | "
+            f"reference image status: {status}"
+        )
+    reference_lines = [
+        f"  - Catalogue reference image {index} belongs to SKU {meta['sku']}."
+        for index, meta in enumerate(reference_metas, start=1)
+    ]
+    if reference_metas:
+        image_order = (
+            f"The first {len(reference_metas)} supplied images are catalogue reference "
+            "images in the exact order listed below. All remaining images are the "
+            "actual packing photographs for this shipment."
+        )
+    else:
+        image_order = "All supplied images are actual packing photographs for this shipment."
+
     return (
-        "You are a packing verification assistant. Compare what is visibly "
-        "supported by the photographs with the finalized shipment manifest below. "
-        "The photographs are evidence for one shipment, not separate orders.\n\n"
+        "You are a packing verification assistant. Compare visible packing evidence "
+        "with the finalized shipment manifest and its saved product identity profiles. "
+        "The photographs are one evidence set for a single shipment.\n\n"
         f"SHIPMENT MANIFEST\n"
         f"  manifest_id     : {manifest['id']}\n"
         f"  fingerprint     : {manifest['manifest_hash']}\n"
         f"  shipment_ref    : {manifest['shipment_order_id']}\n\n"
         f"DECLARED ITEMS:\n{items_text}\n\n"
+        "SAVED CATALOGUE IDENTITY PROFILES:\n"
+        + ("\n".join(profile_lines) if profile_lines else "  - No product identity profiles are saved.")
+        + "\n"
+        + ("CATALOGUE REFERENCE IMAGE ORDER:\n" + "\n".join(reference_lines) + "\n" if reference_lines else "")
+        + "IMAGE ORDER:\n" + image_order + "\n\n"
         "MANDATORY INSTRUCTIONS — follow exactly:\n"
-        "1. Only describe what is VISIBLY PRESENT in the photographs. Do not "
-        "invent or assume unseen contents under any circumstances.\n"
-        "2. Do NOT claim that the contents of sealed boxes, bags, or parcels "
-        "have been verified. If a container is sealed or closed, state that "
-        "its contents are NOT VISIBLE.\n"
-        "3. A SKU is an internal merchant/catalogue identifier, not a physical "
-        "product feature. It is not expected to be printed on the product or "
-        "visible in a photo. Never mark an item as a mismatch or missing solely "
-        "because its SKU cannot be read. Compare the human-readable description "
-        "and only the physical attributes actually stated in the manifest. Claim "
-        "an exact SKU match only when visible text or a label directly proves it.\n"
-        "4. Treat all submitted photos as one evidence set for a single shipment. "
-        "Several photos may show different angles or sides of the same physical "
-        "unit. Do not count a product once per photo, and do not infer extra units "
-        "or extra products only because a product appears in different views. "
-        "Count quantities using distinct physical objects that are clearly "
-        "visible. If you cannot tell whether different photos show the same "
-        "object or separate objects, use result=UNCERTAIN, set observed_qty=null, "
-        "and explain the uncertainty. Do not claim multiple product models are "
-        "packed unless the photos clearly establish distinct physical items.\n"
-        "5. Do not infer unlisted requirements such as a particular brand, exact "
-        "model, colour, size, barcode, or packaging. If the manifest description "
-        "is generic and the photos do not contain enough detail to confirm or "
-        "contradict it, use result=UNCERTAIN rather than inventing a mismatch. "
-        "A plausible visual appearance is not proof of an exact SKU.\n"
-        "6. Clearly distinguish between 'not visible in these photos' and "
-        "'definitely absent'. Use result=NOT_VISIBLE when an item simply cannot "
-        "be seen; use result=POSSIBLE_MISSING only when the photos show the "
-        "relevant unpacked contents sufficiently to support that concern.\n"
-        "7. Describe visible product damage and packaging damage separately. "
-        "Do not infer damage that is hidden or not shown.\n"
-        "8. Set human_review_required to true unconditionally. Never return "
-        "false. Shipment approval or rejection is a human decision.\n"
-        "9. Express uncertainty honestly. Use confidence=LOW when unsure. Do not "
-        "state that a shipment is approved, compliant, or ready to ship.\n\n"
+        "1. Catalogue reference images are examples of the expected product. They are "
+        "NOT items physically packed in this shipment. Never count a reference image "
+        "as an observed item, extra item or packing photograph. Compare its visible "
+        "product appearance only with the actual packing photographs for the matching SKU.\n"
+        "2. Only describe what is VISIBLY PRESENT in the actual packing photographs. "
+        "Do not invent or assume unseen contents under any circumstances.\n"
+        "3. A SKU is an internal merchant/catalogue identifier, not a physical product "
+        "feature. It is not expected to be printed on the product or visible in a photo. "
+        "Never mark an item as a mismatch or missing solely because the SKU cannot be read. "
+        "Never mark a mismatch or missing item solely because the SKU cannot be read. "
+        "Compare the human-readable description and only physical attributes stated in "
+        "the manifest or saved product profile.\n"
+        "4. If a catalogue GTIN is supplied, it is metadata, not proof that the barcode "
+        "was scanned. Only report a GTIN as visually matched when its human-readable "
+        "digits are clearly visible on the actual packing item or label. Do not claim "
+        "that barcode bars were decoded by a scanner. An unreadable or absent label "
+        "does not by itself mean the product is wrong.\n"
+        "5. Use catalogue reference images to compare clearly visible physical features "
+        "such as shape, colour, material or design. Do not infer unlisted requirements "
+        "such as a particular brand, model, colour, size, barcode or packaging. Do not "
+        "infer requirements that are not supported by the manifest description or saved "
+        "product reference. If the available description and reference do not contain "
+        "enough detail to confirm or contradict a variant, use result=UNCERTAIN rather "
+        "than inventing a mismatch. A visual similarity is supporting evidence, not "
+        "cryptographic proof of an exact SKU.\n"
+        "6. Do NOT claim that the contents of sealed boxes, bags, or parcels have been "
+        "verified. If a container is sealed or closed, state that its contents are NOT VISIBLE.\n"
+        "7. Treat all actual packing photographs as one evidence set. Several photos may "
+        "show different angles or sides of the same physical unit. Do not count a product "
+        "once per photo. Count only distinct physical objects that are clearly visible. "
+        "If you cannot tell whether photos show the same object or separate objects, "
+        "use result=UNCERTAIN, set observed_qty=null, and explain the uncertainty.\n"
+        "8. Clearly distinguish between 'not visible' and 'definitely absent'. Use "
+        "result=NOT_VISIBLE when an item simply cannot be seen. Use result=POSSIBLE_MISSING "
+        "only when the relevant unpacked contents are sufficiently visible to support it.\n"
+        "9. Describe visible product damage and packaging damage separately. Do not "
+        "infer damage that is hidden or not shown.\n"
+        "10. Set human_review_required to true unconditionally. The model never approves "
+        "or rejects a shipment. Express uncertainty honestly and use confidence=LOW when unsure.\n\n"
         "Return a JSON object matching the supplied schema exactly."
     )
 
@@ -364,11 +400,18 @@ def _openai_response_schema() -> dict:
     }
 
 
-def _run_openai_inspection(manifest: dict, photo_metas: list[dict], api_key: str) -> dict:
-    """Run the same manifest/photo task through the optional OpenAI vision fallback."""
+def _run_openai_inspection(
+    manifest: dict,
+    photo_metas: list[dict],
+    api_key: str,
+    reference_metas: list[dict] | None = None,
+    product_context: list[dict] | None = None,
+) -> dict:
+    """Run packing photos and catalogue references through the optional OpenAI fallback."""
+    reference_metas = reference_metas or []
     model = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
     image_parts = []
-    for meta in photo_metas:
+    for meta in [*reference_metas, *photo_metas]:
         raw = meta.get("data") if isinstance(meta.get("data"), bytes) else Path(meta["path"]).read_bytes()
         encoded = base64.b64encode(raw).decode("ascii")
         image_parts.append({
@@ -383,7 +426,10 @@ def _run_openai_inspection(manifest: dict, photo_metas: list[dict], api_key: str
         "model": model,
         "messages": [{
             "role": "user",
-            "content": [{"type": "text", "text": _build_prompt(manifest)}] + image_parts,
+            "content": [{
+                "type": "text",
+                "text": _build_prompt(manifest, reference_metas, product_context),
+            }] + image_parts,
         }],
         "response_format": {
             "type": "json_schema",
@@ -453,23 +499,30 @@ def _run_openai_inspection(manifest: dict, photo_metas: list[dict], api_key: str
 # Groq Qwen Vision provider
 # ---------------------------------------------------------------------------
 
-def _run_groq_inspection(manifest: dict, photo_metas: list[dict], api_key: str) -> dict:
-    """Run a packing inspection through Groq's Qwen vision model.
+def _run_groq_inspection(
+    manifest: dict,
+    photo_metas: list[dict],
+    api_key: str,
+    reference_metas: list[dict] | None = None,
+    product_context: list[dict] | None = None,
+) -> dict:
+    """Run Groq Qwen vision with both catalogue references and packing evidence.
 
-    Qwen 3.8 27B accepts at most three images per request. Never truncate a
-    merchant's photo set: callers must route larger sets to Gemini instead.
+    Groq accepts at most three images in total. Never truncate either group:
+    callers must route a larger combined set to Gemini or another provider.
     """
+    reference_metas = reference_metas or []
     if not photo_metas:
         raise RuntimeError("Groq vision inspection requires at least one packing photo.")
-    if len(photo_metas) > 3:
+    if len(reference_metas) + len(photo_metas) > 3:
         raise RuntimeError(
-            "Groq Qwen vision accepts up to 3 images per request. "
-            "Use Gemini for this inspection so every uploaded photo is analysed."
+            "Groq Qwen vision accepts up to 3 images in total. "
+            "Use Gemini to analyse every catalogue reference and packing photo."
         )
 
     model = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b").strip() or "qwen/qwen3.8-27b"
     image_parts = []
-    for meta in photo_metas:
+    for meta in [*reference_metas, *photo_metas]:
         raw = meta.get("data") if isinstance(meta.get("data"), bytes) else Path(meta["path"]).read_bytes()
         encoded = base64.b64encode(raw).decode("ascii")
         image_parts.append({
@@ -484,7 +537,10 @@ def _run_groq_inspection(manifest: dict, photo_metas: list[dict], api_key: str) 
         "model": model,
         "messages": [{
             "role": "user",
-            "content": [{"type": "text", "text": _build_prompt(manifest)}] + image_parts,
+            "content": [{
+                "type": "text",
+                "text": _build_prompt(manifest, reference_metas, product_context),
+            }] + image_parts,
         }],
         "response_format": {
             "type": "json_schema",
@@ -748,20 +804,30 @@ def _validate_ai_result(ai_result: dict, manifest: dict) -> None:
             )
 
 
-def _run_gemini_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
-    """Run a packing inspection with Gemini and optional OpenAI fallback.
+def _run_gemini_inspection(
+    manifest: dict,
+    photo_metas: list[dict],
+    reference_metas: list[dict] | None = None,
+    product_context: list[dict] | None = None,
+) -> dict:
+    """Run Gemini with catalogue references and every submitted packing photo.
 
     Gemini is attempted first. A single short retry is made for transient server
     errors. If Gemini remains unavailable, OPENAI_API_KEY enables a vision
-    fallback. The same photos, manifest prompt, schema checks and human-review
+    fallback. The same references, photos, prompt, schema checks and human-review
     invariant are applied to both providers.
     """
+    reference_metas = reference_metas or []
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
 
     if not api_key:
         if openai_key:
-            return _run_openai_inspection(manifest, photo_metas, openai_key)
+            if not reference_metas and not product_context:
+                return _run_openai_inspection(manifest, photo_metas, openai_key)
+            return _run_openai_inspection(
+                manifest, photo_metas, openai_key, reference_metas, product_context
+            )
         raise GeminiUnavailableError(
             "No vision provider is configured. Add GEMINI_API_KEY or OPENAI_API_KEY to backend/.env."
         )
@@ -774,10 +840,11 @@ def _run_gemini_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
 
     client = genai.Client(api_key=api_key)
 
-    # Build content list: prompt text + one Part per photo.
-    prompt_text = _build_prompt(manifest)
+    # Catalogue references are sent first, then the actual packing photographs.
+    # The prompt labels each reference image and explicitly forbids counting it.
+    prompt_text = _build_prompt(manifest, reference_metas, product_context)
     contents: list = [prompt_text]
-    for meta in photo_metas:
+    for meta in [*reference_metas, *photo_metas]:
         raw = meta.get("data") if isinstance(meta.get("data"), bytes) else Path(meta["path"]).read_bytes()
         contents.append(
             types.Part.from_bytes(data=raw, mime_type=meta["mime_type"])
@@ -814,7 +881,9 @@ def _run_gemini_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
             primary_diagnostic = _gemini_failure_message(final_error)
             if openai_key:
                 try:
-                    return _run_openai_inspection(manifest, photo_metas, openai_key)
+                    return _run_openai_inspection(
+                        manifest, photo_metas, openai_key, reference_metas, product_context
+                    )
                 except RuntimeError:
                     raise RuntimeError(
                         f"{primary_diagnostic} The optional OpenAI vision fallback also failed. "
@@ -857,16 +926,20 @@ def _run_gemini_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
     }
 
 
-def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
-    """Select a configured vision provider without dropping uploaded evidence.
+def run_inspection(
+    manifest: dict,
+    photo_metas: list[dict],
+    reference_metas: list[dict] | None = None,
+    product_context: list[dict] | None = None,
+) -> dict:
+    """Select a vision provider without dropping catalogue references or parcel photos.
 
-    Provider order:
-    - PACKING_VISION_PROVIDER=groq: Groq first, Gemini fallback.
-    - PACKING_VISION_PROVIDER=gemini: Gemini first, Groq fallback.
-    - auto (default): Groq first when configured and the request has at most
-      three photos; otherwise Gemini first.
-    - Larger photo sets are never truncated to satisfy Groq's three-image cap.
+    Groq is used only when the combined reference + packing image count is at
+    most three. Larger sets go to Gemini (or the configured OpenAI fallback).
     """
+    reference_metas = reference_metas or []
+    product_context = product_context or []
+    total_images = len(reference_metas) + len(photo_metas)
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -877,7 +950,7 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
             "PACKING_VISION_PROVIDER must be one of: auto, groq, gemini."
         )
 
-    groq_can_process = len(photo_metas) <= 3
+    groq_can_process = total_images <= 3
     groq_first = preference == "groq" or (
         preference == "auto" and bool(groq_key) and groq_can_process
     )
@@ -888,10 +961,14 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
             raise RuntimeError("GROQ_API_KEY is not configured.")
         if not groq_can_process:
             raise RuntimeError(
-                "Groq Qwen vision accepts up to three images per request. Gemini is required "
-                "to analyse all photos in this inspection."
+                "Groq Qwen accepts up to three images in total. Gemini is required "
+                "to analyse every catalogue reference and packing photo."
             )
-        return _run_groq_inspection(manifest, photo_metas, groq_key)
+        if not reference_metas and not product_context:
+            return _run_groq_inspection(manifest, photo_metas, groq_key)
+        return _run_groq_inspection(
+            manifest, photo_metas, groq_key, reference_metas, product_context
+        )
 
     if groq_first and groq_key:
         try:
@@ -901,7 +978,11 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
 
     if gemini_key:
         try:
-            return _run_gemini_inspection(manifest, photo_metas)
+            if not reference_metas and not product_context:
+                return _run_gemini_inspection(manifest, photo_metas)
+            return _run_gemini_inspection(
+                manifest, photo_metas, reference_metas, product_context
+            )
         except RuntimeError as exc:
             failures.append(str(exc))
 
@@ -911,10 +992,12 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
         except RuntimeError as exc:
             failures.append(str(exc))
 
-    # Preserve the existing optional OpenAI fallback for installations that
-    # have not configured either Groq or Gemini.
     if openai_key and not gemini_key:
-        return _run_openai_inspection(manifest, photo_metas, openai_key)
+        if not reference_metas and not product_context:
+            return _run_openai_inspection(manifest, photo_metas, openai_key)
+        return _run_openai_inspection(
+            manifest, photo_metas, openai_key, reference_metas, product_context
+        )
 
     if failures:
         combined = " ".join(failures)
@@ -926,9 +1009,9 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
 
     if groq_key and not groq_can_process and not gemini_key:
         raise GeminiUnavailableError(
-            "This inspection contains more than three photos. Groq Qwen accepts "
-            "up to three images per request; configure GEMINI_API_KEY to inspect "
-            "the complete five-photo evidence set.",
+            f"This inspection contains {total_images} catalogue and packing images. "
+            "Groq Qwen accepts up to three images in total; configure GEMINI_API_KEY "
+            "or OPENAI_API_KEY to analyse the complete evidence set.",
         )
 
     raise GeminiUnavailableError(

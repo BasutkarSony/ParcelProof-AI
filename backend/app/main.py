@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import hmac
 import json
 import os
@@ -12,6 +13,7 @@ from urllib.parse import urlencode
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from app.validator import validate_order
+from app.product_identity import normalize_gtin
 from app.ai_analyzer import analyze_shipment_evidence
 from app.reconciliation import (
     ReconciliationInputError,
@@ -36,6 +38,8 @@ from app.paypal_client import (
 from app.store import (
     init_db,
     get_catalogue,
+    get_product_identity_profile,
+    update_product_identity_profile,
     create_order,
     get_order,
     list_orders as store_list_orders,
@@ -169,9 +173,146 @@ def list_orders():
     return {"orders": combined}
 
 
+def _catalogue_products_response() -> list[dict]:
+    products = get_catalogue()
+    for product in products:
+        product["reference_image_url"] = (
+            f"/api/catalog/{product['sku']}/reference-image"
+            if product.get("has_reference_image")
+            else None
+        )
+    return products
+
+
 @app.get("/api/catalog")
 def catalog():
-    return {"products": get_catalogue()}
+    return {"products": _catalogue_products_response()}
+
+
+@app.get("/api/catalog/{sku}/reference-image")
+def get_catalogue_reference_image(sku: str):
+    """Serve one saved catalogue reference image through the authenticated app."""
+    profile = get_product_identity_profile(sku)
+    if not profile or not profile.get("reference_image_path"):
+        raise HTTPException(status_code=404, detail="No product reference image is saved.")
+    try:
+        raw = object_storage.download_private_object(profile["reference_image_path"])
+    except object_storage.StorageConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except object_storage.StorageOperationError:
+        raise HTTPException(status_code=502, detail="Product reference image could not be loaded.")
+    return Response(
+        content=raw,
+        media_type=profile.get("reference_image_mime_type") or "application/octet-stream",
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@app.put("/api/catalog/{sku}/identity")
+async def save_catalogue_identity_profile(
+    sku: str,
+    description: str = Form(...),
+    barcode_gtin: str = Form(""),
+    reference_image: UploadFile | None = File(None),
+):
+    """Save reusable product identity data once per catalogue SKU."""
+    profile = get_product_identity_profile(sku)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Active catalogue product not found.")
+
+    normalized_description = str(description or "").strip()
+    if not normalized_description or len(normalized_description) > 500:
+        raise HTTPException(
+            status_code=422,
+            detail="Product description is required and must be 500 characters or fewer.",
+        )
+    try:
+        normalized_gtin = normalize_gtin(barcode_gtin)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    new_object_path = None
+    new_mime_type = None
+    local_temp_path = None
+    if reference_image is not None and reference_image.filename:
+        raw = await reference_image.read(MAX_PHOTO_BYTES + 1)
+        if len(raw) > MAX_PHOTO_BYTES:
+            await reference_image.close()
+            raise HTTPException(status_code=422, detail="Product reference image exceeds the 10 MB limit.")
+        try:
+            image_meta = validate_and_store_photo(raw, reference_image.filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        local_temp_path = image_meta["path"]
+        extension = {
+            "image/jpeg": ".jpg",
+            "image/png": ".png",
+            "image/webp": ".webp",
+        }[image_meta["mime_type"]]
+        sku_folder = hashlib.sha256(sku.encode("utf-8")).hexdigest()[:24]
+        new_object_path = f"catalogue/{sku_folder}/{image_meta['id']}{extension}"
+        new_mime_type = image_meta["mime_type"]
+
+        try:
+            await run_in_threadpool(
+                object_storage.upload_private_object,
+                new_object_path,
+                raw,
+                new_mime_type,
+            )
+        except object_storage.StorageConfigurationError as exc:
+            Path(local_temp_path).unlink(missing_ok=True)
+            raise HTTPException(status_code=503, detail=str(exc))
+        except object_storage.StorageOperationError:
+            Path(local_temp_path).unlink(missing_ok=True)
+            raise HTTPException(status_code=502, detail="Product reference image could not be saved to private storage.")
+        finally:
+            await reference_image.close()
+
+        Path(local_temp_path).unlink(missing_ok=True)
+
+    try:
+        updated_profile = update_product_identity_profile(
+            sku=sku,
+            description=normalized_description,
+            barcode_gtin=normalized_gtin,
+            reference_image_path=new_object_path,
+            reference_image_mime_type=new_mime_type,
+        )
+    except ValueError as exc:
+        if new_object_path:
+            try:
+                await run_in_threadpool(object_storage.delete_private_object, new_object_path)
+            except object_storage.StorageOperationError:
+                pass
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        if new_object_path:
+            try:
+                await run_in_threadpool(object_storage.delete_private_object, new_object_path)
+            except object_storage.StorageOperationError:
+                pass
+        raise
+
+    old_path = profile.get("reference_image_path")
+    if new_object_path and old_path and old_path != new_object_path:
+        try:
+            await run_in_threadpool(object_storage.delete_private_object, old_path)
+        except object_storage.StorageOperationError:
+            # Keep the newly saved profile valid; an orphaned old object is harmless
+            # and can be cleaned up later without exposing it publicly.
+            pass
+
+    product = next(
+        (item for item in _catalogue_products_response() if item["sku"] == sku),
+        None,
+    )
+    return {"product": product, "identity_profile": {
+        "sku": updated_profile["sku"],
+        "barcode_gtin": updated_profile["barcode_gtin"],
+        "has_reference_image": bool(updated_profile.get("reference_image_path")),
+    }}
+
 
 
 @app.get("/api/checkout/orders")
@@ -1252,7 +1393,50 @@ async def create_packing_inspection(
             stored_paths.append(meta["path"])
         photo_metas.append(meta)
 
-    # 4. Build durable photo metadata before calling the external AI provider.
+    # 4. Resolve one saved catalogue identity profile per distinct SKU.
+    # Reference images are passed to vision as labelled catalogue context, not
+    # as packing evidence and never count toward the inspection's photo_count.
+    reference_metas: list[dict] = []
+    product_reference_context: list[dict] = []
+    seen_skus: set[str] = set()
+    for item in manifest.get("items", []):
+        sku = str(item.get("sku") or "").strip()
+        if not sku or sku in seen_skus:
+            continue
+        seen_skus.add(sku)
+        profile = get_product_identity_profile(sku)
+        if profile is None:
+            product_reference_context.append({
+                "sku": sku,
+                "barcode_gtin": None,
+                "reference_image_status": "NO_PROFILE",
+            })
+            continue
+
+        context = {
+            "sku": sku,
+            "barcode_gtin": profile.get("barcode_gtin"),
+            "reference_image_status": "NOT_CONFIGURED",
+        }
+        if profile.get("reference_image_path"):
+            try:
+                reference_bytes = await run_in_threadpool(
+                    object_storage.download_private_object,
+                    profile["reference_image_path"],
+                )
+                reference_metas.append({
+                    "sku": sku,
+                    "data": reference_bytes,
+                    "mime_type": profile.get("reference_image_mime_type") or "image/jpeg",
+                })
+                context["reference_image_status"] = "LOADED"
+            except (object_storage.StorageConfigurationError, object_storage.StorageOperationError):
+                context["reference_image_status"] = "UNAVAILABLE"
+        elif profile.get("barcode_gtin"):
+            context["reference_image_status"] = "GTIN_ONLY"
+        product_reference_context.append(context)
+
+    # 5. Build durable photo metadata before calling the external AI provider.
     photo_records = [
         {
             "id": m["id"],
@@ -1300,22 +1484,53 @@ async def create_packing_inspection(
             ),
         )
 
-    # 5. Run the AI provider. Provider failure must not destroy the evidence.
+    # 6. Run the AI provider. Provider failure must not destroy the evidence.
+    # Keep the original provider call for products without an actual saved
+    # reference image or GTIN; only send the extra context when it is useful.
+    has_identity_context = bool(reference_metas) or any(
+        item.get("barcode_gtin")
+        or item.get("reference_image_status") == "UNAVAILABLE"
+        for item in product_reference_context
+    )
     try:
-        result = await run_in_threadpool(run_inspection, manifest, photo_metas)
+        if has_identity_context:
+            result = await run_in_threadpool(
+                run_inspection,
+                manifest,
+                photo_metas,
+                reference_metas,
+                product_reference_context,
+            )
+        else:
+            result = await run_in_threadpool(run_inspection, manifest, photo_metas)
     except GeminiUnavailableError as exc:
         await _record_ai_failure(exc, getattr(exc, "status_code", 503))
     except RuntimeError as exc:
         await _record_ai_failure(RuntimeError(f"Vision inspection failed: {exc}"), 502)
 
-    # 6. Persist; clean up photos if the DB write fails.
+    # 7. Persist; clean up photos if the DB write fails.
+    unavailable_references = [
+        item["sku"] for item in product_reference_context
+        if item["reference_image_status"] == "UNAVAILABLE"
+    ]
+    ai_result = dict(result["ai_result"])
+    ai_result["product_reference_context"] = product_reference_context
+    if unavailable_references:
+        notes = ai_result.get("additional_observations", {}).get("uncertainty_notes", [])
+        ai_result["additional_observations"]["uncertainty_notes"] = [
+            *notes,
+            "Saved catalogue reference image could not be loaded for SKU(s): "
+            + ", ".join(unavailable_references)
+            + ". This inspection used the manifest description without those reference images.",
+        ]
+
     try:
         inspection = create_inspection(
             manifest_id=manifest_id,
             manifest_hash=manifest["manifest_hash"],
             model_used=result["model_used"],
             ai_result={
-                **result["ai_result"],
+                **ai_result,
                 "engine_metadata": result["engine_metadata"],
             },
             photo_records=photo_records,

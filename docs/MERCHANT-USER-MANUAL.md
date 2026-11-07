@@ -17,10 +17,22 @@ For local development, demo authentication is normally disabled. Follow the setu
 ## 3. Main navigation
 
 - **Shipment Review** — view PayPal-linked shipment records and select the order to work on.
+- **Product Catalogue** — save a product's detailed description, one reference image and optional GTIN once per SKU.
 - **Manifests** — confirm the order-derived products and quantities, then finalize the packing manifest.
 - **Packing Station** — review the finalized manifest, photograph the actual items before sealing, and run AI vision inspection.
 - **AI Inspections** — review original photos and AI observations, then approve, request correction or reject the packing review. The guarded tracking workflow is shown here.
 - **Sandbox Checkout** — create a PayPal Sandbox payment for a physical-goods order.
+
+### One-time product identity setup
+
+Before fulfilling a catalogue SKU for the first time:
+
+1. Open **Product Catalogue**.
+2. Review the product description and add details that distinguish the ordered variant, such as material, model, size or finish.
+3. Optionally enter the digits printed below the product barcode. ParcelProof checks the GTIN check digit; it does not use the device camera to decode barcode bars.
+4. Optionally upload one clear reference photo of the actual product. Save the profile.
+
+The reference photo is kept in private storage and reused as catalogue context in future AI packing inspections. It is not counted as a parcel item and does not need to be uploaded again for every order. Reference images are optional; without one, AI uses the manifest description and any supplied GTIN metadata.
 
 ## 4. Create a test order
 
@@ -121,6 +133,7 @@ The app contains a guarded PayPal Orders v2 tracking workflow. It requires a sav
 ## 12. Known prototype limitations
 
 - The storefront uses a small sample catalogue; it is not connected to a merchant's Shopify, WooCommerce or other live store.
+- Product identity profiles are configured manually once per SKU. The app validates a supplied GTIN's check digit but does not optically scan barcodes; visual similarity is supporting evidence, not proof of an exact SKU.
 - The demo uses shared authentication, not separate merchant accounts or role-based access.
 - Carrier events are not independently fetched from carrier systems by this prototype.
 - AI inspection is fallible and requires a human decision.

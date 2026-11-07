@@ -134,6 +134,7 @@ const EyeIcon = () => (
 function Sidebar({ currentPath, ordersCount, navigateTo }) {
   const isReview = currentPath === '/'
   const isManifests = currentPath === '/manifests'
+  const isCatalogue = currentPath === '/catalogue'
   const isPacking = currentPath === '/packing'
   const isInspections = currentPath === '/inspections'
   const isCheckout = currentPath === '/checkout' || currentPath === '/checkout/return' || currentPath === '/checkout/cancel'
@@ -166,6 +167,14 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
         >
           <span aria-hidden="true"><ManifestIcon /></span>
           <span>Manifests</span>
+        </button>
+        <button
+          className={`nav-item nav-item-btn ${isCatalogue ? 'active' : ''}`}
+          onClick={() => navigateTo('/catalogue')}
+          aria-current={isCatalogue ? 'page' : undefined}
+        >
+          <span aria-hidden="true">▤</span>
+          <span>Product Catalogue</span>
         </button>
         <button
           className={`nav-item nav-item-btn ${isPacking ? 'active' : ''}`}
@@ -210,6 +219,255 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
         <p>Payment-linked packing checks with a human decision.</p>
       </div>
     </aside>
+  )
+}
+
+// ─── One-time product identity profiles ───────────────────────────────────────
+export function ProductCatalogueView() {
+  const [products, setProducts] = useState([])
+  const [drafts, setDrafts] = useState({})
+  const [referenceFiles, setReferenceFiles] = useState({})
+  const [fileInputVersions, setFileInputVersions] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [savingSku, setSavingSku] = useState('')
+  const [saveMessages, setSaveMessages] = useState({})
+  const [saveErrors, setSaveErrors] = useState({})
+
+  useEffect(() => {
+    let ignore = false
+    async function loadCatalogue() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const response = await fetch(`${API_BASE}/api/catalog`)
+        const data = await readApiJson(response)
+        if (!response.ok) throw new Error(data.detail || 'Could not load the product catalogue.')
+        if (ignore) return
+        const catalogue = data.products || []
+        setProducts(catalogue)
+        setDrafts(Object.fromEntries(catalogue.map(product => [
+          product.sku,
+          {
+            description: product.description || '',
+            barcode_gtin: product.barcode_gtin || ''
+          }
+        ])))
+      } catch (error) {
+        if (!ignore) setLoadError(error.message || 'Could not load the product catalogue.')
+      } finally {
+        if (!ignore) setLoading(false)
+      }
+    }
+    loadCatalogue()
+    return () => { ignore = true }
+  }, [])
+
+  function updateDraft(sku, field, value) {
+    setDrafts(previous => ({
+      ...previous,
+      [sku]: { ...(previous[sku] || {}), [field]: value }
+    }))
+  }
+
+  function updateReferenceFile(sku, file) {
+    setReferenceFiles(previous => ({ ...previous, [sku]: file || null }))
+    setSaveMessages(previous => ({ ...previous, [sku]: '' }))
+    setSaveErrors(previous => ({ ...previous, [sku]: '' }))
+  }
+
+  async function saveProfile(sku) {
+    const draft = drafts[sku]
+    if (!draft) return
+    setSavingSku(sku)
+    setSaveMessages(previous => ({ ...previous, [sku]: '' }))
+    setSaveErrors(previous => ({ ...previous, [sku]: '' }))
+
+    const formData = new FormData()
+    formData.append('description', String(draft.description || '').trim())
+    formData.append('barcode_gtin', String(draft.barcode_gtin || '').trim())
+    if (referenceFiles[sku]) formData.append('reference_image', referenceFiles[sku])
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/catalog/${encodeURIComponent(sku)}/identity`,
+        { method: 'PUT', body: formData }
+      )
+      const data = await readApiJson(response)
+      if (!response.ok) throw new Error(data.detail || 'Could not save the product identity profile.')
+      if (data.product) {
+        setProducts(previous => previous.map(product =>
+          product.sku === sku ? data.product : product
+        ))
+        setDrafts(previous => ({
+          ...previous,
+          [sku]: {
+            description: data.product.description || '',
+            barcode_gtin: data.product.barcode_gtin || ''
+          }
+        }))
+      }
+      setReferenceFiles(previous => ({ ...previous, [sku]: null }))
+      setFileInputVersions(previous => ({ ...previous, [sku]: (previous[sku] || 0) + 1 }))
+      setSaveMessages(previous => ({
+        ...previous,
+        [sku]: 'Saved. This profile will be reused for future packing inspections.'
+      }))
+    } catch (error) {
+      setSaveErrors(previous => ({
+        ...previous,
+        [sku]: error.message || 'Could not save the product identity profile.'
+      }))
+    } finally {
+      setSavingSku('')
+    }
+  }
+
+  return (
+    <main className="main" id="main-content">
+      <header className="topbar">
+        <div className="breadcrumb">
+          <span>Workspace</span>
+          <span>/</span>
+          <strong>Product Catalogue</strong>
+        </div>
+        <div className="topbar-actions">
+          <span className="pill pill-unchecked">ONE-TIME PRODUCT SETUP</span>
+        </div>
+      </header>
+
+      <section className="catalogue-identity-intro">
+        <div>
+          <div className="eyebrow">PRODUCT IDENTITY</div>
+          <h1>Set up each product once.</h1>
+          <p>
+            Add a useful product description, one reference photo and an optional GTIN for each catalogue SKU.
+            ParcelProof reuses these details in future packing checks, so you do not need to photograph the same
+            product again for every order.
+          </p>
+        </div>
+        <div className="catalogue-identity-note">
+          <strong>Reference images stay private</strong>
+          <span>They are sent to AI as catalogue context, never counted as items in the parcel.</span>
+        </div>
+      </section>
+
+      {loadError && <div className="findings-box issues" role="alert">{loadError}</div>}
+
+      {loading ? (
+        <div className="checkout-state-box" role="status">
+          <div className="checkout-state-icon loading-spinner"><SpinnerIcon /></div>
+          <p>Loading product catalogue…</p>
+        </div>
+      ) : products.length === 0 ? (
+        <div className="checkout-state-box">
+          <h3>No active products</h3>
+          <p>The product catalogue does not contain any active SKUs yet.</p>
+        </div>
+      ) : (
+        <div className="product-profile-grid">
+          {products.map(product => {
+            const draft = drafts[product.sku] || {
+              description: product.description || '',
+              barcode_gtin: product.barcode_gtin || ''
+            }
+            const isSaving = savingSku === product.sku
+            return (
+              <article className="product-profile-card" key={product.sku}>
+                <div className="product-profile-heading">
+                  <div>
+                    <span className="eyebrow">CATALOGUE SKU</span>
+                    <h2>{product.name}</h2>
+                    <code>{product.sku}</code>
+                  </div>
+                  <span className={product.has_reference_image ? 'pill pill-pass' : 'pill pill-unchecked'}>
+                    {product.has_reference_image ? 'REFERENCE SAVED' : 'SETUP NEEDED'}
+                  </span>
+                </div>
+
+                <div className="product-profile-reference">
+                  {product.has_reference_image && product.reference_image_url ? (
+                    <img
+                      src={`${API_BASE}${product.reference_image_url}`}
+                      alt={`Saved catalogue reference for ${product.name}`}
+                    />
+                  ) : (
+                    <div className="product-profile-empty-image">
+                      <span aria-hidden="true">▧</span>
+                      <strong>No reference image saved</strong>
+                      <small>Add one clear image of the actual product, once.</small>
+                    </div>
+                  )}
+                </div>
+
+                <form className="product-profile-form" onSubmit={event => {
+                  event.preventDefault()
+                  saveProfile(product.sku)
+                }}>
+                  <label className="product-profile-field">
+                    <span>Product description</span>
+                    <textarea
+                      aria-label={`Product description for ${product.name}`}
+                      rows={3}
+                      maxLength={500}
+                      value={draft.description}
+                      onChange={event => updateDraft(product.sku, 'description', event.target.value)}
+                      placeholder="Describe the distinguishing product features…"
+                      required
+                    />
+                    <small>Use details that distinguish the ordered item, such as model, material, size or finish.</small>
+                  </label>
+
+                  <label className="product-profile-field">
+                    <span>Barcode / GTIN (optional)</span>
+                    <input
+                      aria-label={`GTIN for ${product.name}`}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={20}
+                      value={draft.barcode_gtin}
+                      onChange={event => updateDraft(product.sku, 'barcode_gtin', event.target.value)}
+                      placeholder="8, 12, 13 or 14 digits"
+                    />
+                    <small>Enter the printed digits. ParcelProof checks the GTIN check digit; it does not scan barcode bars.</small>
+                  </label>
+
+                  <label className="product-profile-field">
+                    <span>Reference photo (optional)</span>
+                    <input
+                      key={`${product.sku}-${fileInputVersions[product.sku] || 0}`}
+                      aria-label={`Reference photo for ${product.name}`}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={event => updateReferenceFile(product.sku, event.target.files?.[0] || null)}
+                    />
+                    <small>JPEG, PNG or WebP · max 10 MB. Used as a comparison reference, not parcel evidence.</small>
+                    {referenceFiles[product.sku] && (
+                      <small className="product-profile-selected-file">Selected: {referenceFiles[product.sku].name}</small>
+                    )}
+                  </label>
+
+                  {saveErrors[product.sku] && (
+                    <div className="findings-box issues" role="alert">{saveErrors[product.sku]}</div>
+                  )}
+                  {saveMessages[product.sku] && (
+                    <div className="pass-callout" role="status">{saveMessages[product.sku]}</div>
+                  )}
+
+                  <div className="product-profile-actions">
+                    <span>{product.has_reference_image ? 'Profile saved for future orders' : 'Profile can be saved without a photo'}</span>
+                    <button className="btn-primary" type="submit" disabled={isSaving}>
+                      {isSaving ? 'Saving…' : 'Save product profile'}
+                    </button>
+                  </div>
+                </form>
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </main>
   )
 }
 
@@ -687,6 +945,10 @@ export default function App() {
 
       {currentPath === '/checkout/cancel' && (
         <CheckoutCancelView navigateTo={navigateTo} />
+      )}
+
+      {currentPath === '/catalogue' && (
+        <ProductCatalogueView />
       )}
 
       {currentPath === '/manifests' && (
@@ -3160,6 +3422,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
 
   const aiResult = inspectionDetail?.ai_result
   const itemChecks = aiResult?.item_checks || []
+  const productReferenceContext = aiResult?.product_reference_context || []
   const addlObs = aiResult?.additional_observations || {}
   const imageQuality = aiResult?.image_quality || {}
   const engineMeta = aiResult?.engine_metadata || {}
@@ -3338,6 +3601,33 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                           </div>
                           <p className="summary-callout-body">{aiResult.inspection_summary}</p>
                         </div>
+                      )}
+
+                      {productReferenceContext.length > 0 && (
+                        <section className="product-reference-context" aria-label="Catalogue references used by AI">
+                          <div className="product-reference-context-heading">
+                            <strong>Product references supplied to AI</strong>
+                            <span>Saved once per catalogue SKU</span>
+                          </div>
+                          <div className="product-reference-context-list">
+                            {productReferenceContext.map(profile => {
+                              const statusLabel = {
+                                LOADED: 'Reference image supplied',
+                                GTIN_ONLY: 'GTIN context only · barcode not scanned',
+                                UNAVAILABLE: 'Saved image unavailable for this inspection',
+                                NOT_CONFIGURED: 'No image or GTIN saved',
+                                NO_PROFILE: 'No product profile saved'
+                              }[profile.reference_image_status] || 'Reference status unknown'
+                              return (
+                                <div className="product-reference-context-item" key={profile.sku}>
+                                  <code>{profile.sku}</code>
+                                  <span>{statusLabel}</span>
+                                  {profile.barcode_gtin && <small>GTIN {profile.barcode_gtin}</small>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </section>
                       )}
 
                       

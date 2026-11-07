@@ -125,7 +125,10 @@ def init_db() -> None:
                 description TEXT NOT NULL,
                 price_cents INTEGER NOT NULL,
                 is_active INTEGER NOT NULL DEFAULT 1,
-                fragile INTEGER NOT NULL DEFAULT 0
+                fragile INTEGER NOT NULL DEFAULT 0,
+                barcode_gtin TEXT,
+                reference_image_path TEXT,
+                reference_image_mime_type TEXT
             );
             CREATE TABLE IF NOT EXISTS orders (
                 id TEXT PRIMARY KEY,
@@ -277,6 +280,9 @@ def init_db() -> None:
         # replacing or deleting existing customer, order, or evidence records.
         _ensure_column(conn, "products", "is_active", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "products", "fragile", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "products", "barcode_gtin", "TEXT")
+        _ensure_column(conn, "products", "reference_image_path", "TEXT")
+        _ensure_column(conn, "products", "reference_image_mime_type", "TEXT")
         _ensure_column(conn, "orders", "buyer_name", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "orders", "shipping_address", "TEXT NOT NULL DEFAULT '{}'")
         _ensure_column(conn, "order_items", "fragile", "INTEGER NOT NULL DEFAULT 0")
@@ -331,7 +337,8 @@ def get_catalogue() -> list[dict]:
     conn = _connect()
     try:
         rows = conn.execute(
-            "SELECT sku, name, description, price_cents, fragile FROM products "
+            "SELECT sku, name, description, price_cents, fragile, barcode_gtin, "
+            "reference_image_path FROM products "
             "WHERE is_active = 1 ORDER BY sku"
         ).fetchall()
         return [
@@ -342,9 +349,75 @@ def get_catalogue() -> list[dict]:
                 "price": _money(row["price_cents"]),
                 "currency": "USD",
                 "fragile": bool(row["fragile"]),
+                "barcode_gtin": row["barcode_gtin"],
+                "has_reference_image": bool(row["reference_image_path"]),
             }
             for row in rows
         ]
+    finally:
+        conn.close()
+
+
+def get_product_identity_profile(sku: str) -> dict | None:
+    """Return a catalogue product's private identity-profile metadata."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            """
+            SELECT sku, name, description, barcode_gtin,
+                   reference_image_path, reference_image_mime_type
+            FROM products
+            WHERE sku = ? AND is_active = 1
+            """,
+            (sku,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_product_identity_profile(
+    sku: str,
+    description: str,
+    barcode_gtin: str | None,
+    reference_image_path: str | None = None,
+    reference_image_mime_type: str | None = None,
+) -> dict:
+    """Update reusable catalogue identity data without changing price or order history."""
+    conn = _connect()
+    try:
+        with conn:
+            row = conn.execute(
+                "SELECT sku FROM products WHERE sku = ? AND is_active = 1",
+                (sku,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Active catalogue product not found: {sku}")
+
+            if reference_image_path is not None:
+                conn.execute(
+                    """
+                    UPDATE products
+                    SET description = ?, barcode_gtin = ?,
+                        reference_image_path = ?, reference_image_mime_type = ?
+                    WHERE sku = ?
+                    """,
+                    (description, barcode_gtin, reference_image_path,
+                     reference_image_mime_type, sku),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE products
+                    SET description = ?, barcode_gtin = ?
+                    WHERE sku = ?
+                    """,
+                    (description, barcode_gtin, sku),
+                )
+        profile = get_product_identity_profile(sku)
+        if profile is None:
+            raise ValueError(f"Active catalogue product not found: {sku}")
+        return profile
     finally:
         conn.close()
 
@@ -756,11 +829,15 @@ def create_manifest_from_checkout_order(shipment_order_id: str, checkout_order_i
             if not order or order["payment_status"] != "PAID":
                 raise ValueError("A manifest can only be generated from a paid checkout order.")
 
-            order_order = "item_position, id" if _uses_postgres() else "item_position, rowid"
             order_items = conn.execute(
                 f"""
-                SELECT id, product_sku, product_name, quantity, unit_price_cents, fragile
-                FROM order_items WHERE order_id = ? ORDER BY {order_order}
+                SELECT oi.id, oi.product_sku, oi.product_name,
+                       COALESCE(NULLIF(p.description, ''), oi.product_name) AS product_description,
+                       oi.quantity, oi.unit_price_cents, oi.fragile
+                FROM order_items oi
+                LEFT JOIN products p ON p.sku = oi.product_sku
+                WHERE oi.order_id = ?
+                ORDER BY oi.item_position, oi.id
                 """,
                 (checkout_order_id,),
             ).fetchall()
@@ -768,7 +845,7 @@ def create_manifest_from_checkout_order(shipment_order_id: str, checkout_order_i
                 {
                     "source_order_item_id": row["id"],
                     "sku": row["product_sku"],
-                    "description": row["product_name"],
+                    "description": row["product_description"],
                     "expected_qty": row["quantity"],
                     "unit_value_cents": row["unit_price_cents"],
                     "fragile": bool(row["fragile"]),
