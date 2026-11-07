@@ -3070,7 +3070,6 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const [inspectionDetail, setInspectionDetail] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [reviewerLabel, setReviewerLabel] = useState('Merchant')
   const [reviewNotes, setReviewNotes] = useState('')
   const reviewNotesRef = useRef(null)
   const [reviewSaving, setReviewSaving] = useState(false)
@@ -3201,9 +3200,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const latestInspectionId = inspectionsList[0]?.inspection_id
   const isLatestInspection = Boolean(inspectionDetail && inspectionDetail.inspection_id === latestInspectionId)
   const canHumanReview = isLatestInspection && inspectionDetail?.inspection_status === 'PENDING_HUMAN_REVIEW'
-  const suggestedReviewNote = aiResult?.inspection_summary
-    ? `${aiResult.inspection_summary} Keep the shipment on hold until the correct item is verified and updated packing evidence is recorded.`
-    : 'Verify that the photographed goods match the finalized manifest and capture updated packing evidence before dispatch.'
+  const suggestedReviewNote = 'Verify that the photographed goods match the finalized manifest. Keep the shipment on hold until any mismatch is corrected and updated packing photos are recorded.'
   const canSubmitTracking =
     Boolean(selectedShipment?.checkout_order_id) &&
     isLatestInspection &&
@@ -3652,7 +3649,9 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                             'Visual inspection only. Sealed container contents are not verified. This result requires human review before any shipment approval or rejection decision is made.'}
                         </p>
                       </div>
-                      </details>                      {selectedShipment.checkout_order_id && (
+                      </details>
+
+                      {selectedShipment.checkout_order_id && (
                         <div className="manifest-items-card" style={{ marginTop: '18px' }}>
                           <div className="items-card-header">
                             <div>
