@@ -3722,6 +3722,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                             </div>
                           )}
                         </div>
+                        ))
                       )}
                     </>
                   )}
