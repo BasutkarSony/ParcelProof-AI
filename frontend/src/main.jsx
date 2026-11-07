@@ -918,6 +918,7 @@ export default function App() {
                             placeholder="e.g. OnTrac, LaserShip, Royal Mail"
                           />
                         </div>
+                        ))
                       )}
 
                     </div>
@@ -3298,9 +3299,13 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                         </span>
                       </div>
                       <p>
-                        Visual AI inspection is an advisory assistance tool. By system safety policy,
-                        <strong> AI never automatically approves shipments</strong>. Merchant reviewers must inspect
-                        the observed contents, discrepancies, packaging damage, and photo evidence below before making shipping decisions.
+                        {inspectionDetail?.inspection_status === 'NEEDS_CORRECTION'
+                          ? 'Correction requested. This shipment remains on hold until updated packing evidence is inspected.'
+                          : inspectionDetail?.inspection_status === 'REJECTED'
+                          ? 'This inspection was rejected. Resolve the packing issue and submit new evidence before dispatch.'
+                          : inspectionDetail?.inspection_status === 'APPROVED'
+                          ? 'A merchant approved this inspection. Tracking remains a separate step and is available only when PayPal submission is enabled.'
+                          : 'AI provides visual observations only. The merchant makes the packing decision.'}
                       </p>
                     </div>
                   </div>
@@ -3384,7 +3389,15 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                         <div className="items-card-header">
                           <div>
                             <h3>Merchant decision</h3>
-                            <p>Check the original photos and decide whether this shipment can proceed.</p>
+                            <p>
+                              {inspectionDetail.inspection_status === 'NEEDS_CORRECTION'
+                                ? 'Correction request saved. The shipment is still on hold.'
+                                : inspectionDetail.inspection_status === 'REJECTED'
+                                ? 'Rejection saved. Resolve the packing issue before a new inspection.'
+                                : inspectionDetail.inspection_status === 'APPROVED'
+                                ? 'Approval saved for this inspection.'
+                                : 'Check the original photos and decide whether this shipment can proceed.'}
+                            </p>
                           </div>
                           <span className={`pill ${inspectionDetail.inspection_status === 'APPROVED' ? 'pill-pass' : inspectionDetail.inspection_status === 'REJECTED' ? 'pill-blocked' : 'pill-warn'}`}>
                             {inspectionDetail.inspection_status.replaceAll('_', ' ')}
@@ -3431,15 +3444,33 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                           </form>
                         ) : (
                           <div className="inspection-decision-form">
-                            <p>
-                              {!isLatestInspection
-                                ? 'A newer inspection exists for this shipment. Only the latest inspection can receive a human decision.'
-                                : inspectionDetail.inspection_status === 'APPROVED'
-                                ? 'A merchant approved this inspection. A new inspection is required to record another review.'
-                                : inspectionDetail.inspection_status === 'NEEDS_CORRECTION'
-                                ? 'Corrections are required. Return to the packing station, capture updated evidence, and submit a new inspection.'
-                                : 'This inspection was rejected. Submit a new inspection only after the underlying packing issue has been resolved.'}
-                            </p>
+                            {!isLatestInspection ? (
+                              <p>A newer inspection exists for this shipment. Only the latest inspection can receive a human decision.</p>
+                            ) : inspectionDetail.inspection_status === 'NEEDS_CORRECTION' ? (
+                              <>
+                                <p>Next step: capture new photos showing the correct item and its packaging. The shipment stays on hold until a new inspection is reviewed.</p>
+                                <button
+                                  type="button"
+                                  className="btn-primary"
+                                  onClick={() => navigateTo('/packing', { shipmentId: selectedShipment.order_id })}
+                                >
+                                  Capture corrected packing photos →
+                                </button>
+                              </>
+                            ) : inspectionDetail.inspection_status === 'REJECTED' ? (
+                              <>
+                                <p>Resolve the packing issue, then capture fresh evidence before creating another inspection.</p>
+                                <button
+                                  type="button"
+                                  className="btn-secondary"
+                                  onClick={() => navigateTo('/packing', { shipmentId: selectedShipment.order_id })}
+                                >
+                                  Return to Packing Station →
+                                </button>
+                              </>
+                            ) : (
+                              <p>A merchant approved this inspection. Tracking is the next step when PayPal submission is enabled.</p>
+                            )}
                           </div>
                         )}
 
@@ -3615,6 +3646,9 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                       </details>
 
                       {selectedShipment.checkout_order_id && (
+                        (inspectionDetail.inspection_status === 'APPROVED' ||
+                          selectedShipment.tracking_submission_status === 'SUBMITTED' ||
+                          selectedShipment.tracking_submission_status === 'FAILED') && (
                         <div className="manifest-items-card" style={{ marginTop: '18px' }}>
                           <div className="items-card-header">
                             <div>
