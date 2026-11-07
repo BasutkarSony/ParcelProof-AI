@@ -2506,52 +2506,6 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   }, [selectedShipment])
 
   // Format file size
-  async function handleHumanReview(decision) {
-    if (!inspectionDetail || reviewSaving) return
-    // Read the live field value so browser paste/autofill cannot leave React state stale.
-    const notes = (reviewNotesRef.current?.value ?? reviewNotes).trim()
-    if (decision !== 'APPROVED' && !notes) {
-      setReviewError('Add a note explaining the rejection or requested correction.')
-      return
-    }
-    setReviewSaving(true)
-    setReviewError('')
-    setReviewFeedback('')
-    try {
-      const res = await fetch(`${API_BASE}/api/inspections/${inspectionDetail.inspection_id}/review`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          decision,
-          reviewer_label: 'Merchant',
-          notes
-        })
-      })
-      const data = await readApiJson(res)
-      if (!res.ok) {
-        throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail) || `Could not save the review decision (HTTP ${res.status}).`)
-      }
-      setInspectionDetail(prev => ({
-        ...prev,
-        inspection_status: data.inspection_status,
-        review_history: data.review_history || [],
-        updated_at: data.reviewed_at
-      }))
-      setInspectionsList(prev => prev.map(item =>
-        item.inspection_id === data.inspection_id
-          ? { ...item, inspection_status: data.inspection_status }
-          : item
-      ))
-      setReviewNotes('')
-      if (reviewNotesRef.current) reviewNotesRef.current.value = ''
-      setReviewFeedback(`Human review recorded: ${data.inspection_status.replaceAll('_', ' ')}.`)
-    } catch (err) {
-      setReviewError(err.message || 'Could not save the review decision.')
-    } finally {
-      setReviewSaving(false)
-    }
-  }
-
   async function handleTrackingSubmit() {
     if (!selectedShipment || trackingSubmitting) return
     setTrackingSubmitting(true)
@@ -3070,11 +3024,23 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const [inspectionDetail, setInspectionDetail] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [reviewNotes, setReviewNotes] = useState('')
-  const reviewNotesRef = useRef(null)
-  const [reviewSaving, setReviewSaving] = useState(false)
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [reviewError, setReviewError] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const status = params.get('review_status')
+    const error = params.get('review_error')
+    if (status) setReviewFeedback(`Human review recorded: ${status.replaceAll('_', ' ')}.`)
+    if (error) setReviewError(error)
+    if (status || error) {
+      params.delete('review_status')
+      params.delete('review_error')
+      params.delete('inspection_id')
+      const query = params.toString()
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
+    }
+  }, [])
   const [trackingNumber, setTrackingNumber] = useState('')
   const [trackingCarrier, setTrackingCarrier] = useState('OTHER')
   const [trackingCarrierOther, setTrackingCarrierOther] = useState('')
@@ -3431,12 +3397,10 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                         {canHumanReview ? (
                           <form
                             className="inspection-decision-form"
-                            onSubmit={event => {
-                              event.preventDefault()
-                              const decision = event.nativeEvent?.submitter?.value || 'NEEDS_CORRECTION'
-                              handleHumanReview(decision)
-                            }}
+                            action={`${API_BASE}/api/inspections/${inspectionDetail.inspection_id}/review/form`}
+                            method="post"
                           >
+                            <input type="hidden" name="reviewer_label" value="Merchant" />
                             <p className="inspection-decision-guidance">
                               The AI found that the two photographs show different notebooks and neither confirms the declared SKU.
                               The recommended action is to request corrected packing evidence and keep this shipment on hold.
@@ -3445,23 +3409,22 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                               <label htmlFor="review-notes">Decision note</label>
                               <textarea
                                 id="review-notes"
-                                ref={reviewNotesRef}
+                                name="notes"
                                 className="form-control"
                                 rows="3"
                                 maxLength={2000}
                                 defaultValue={suggestedReviewNote}
-                                onChange={event => setReviewNotes(event.target.value)}
                                 placeholder="Explain what needs to be checked or corrected."
                               />
                             </div>
                             <div className="inspection-decision-actions">
-                              <button type="submit" value="NEEDS_CORRECTION" className="btn-primary" disabled={reviewSaving}>
-                                {reviewSaving ? 'Saving…' : 'Request correction'}
+                              <button type="submit" name="decision" value="NEEDS_CORRECTION" className="btn-primary">
+                                Request correction
                               </button>
-                              <button type="submit" value="REJECTED" className="btn-secondary" disabled={reviewSaving}>
+                              <button type="submit" name="decision" value="REJECTED" className="btn-secondary">
                                 Reject inspection
                               </button>
-                              <button type="submit" value="APPROVED" className="btn-secondary" disabled={reviewSaving}>
+                              <button type="submit" name="decision" value="APPROVED" className="btn-secondary">
                                 Approve packing review
                               </button>
                             </div>
