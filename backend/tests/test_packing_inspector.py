@@ -120,6 +120,47 @@ def _finalized_manifest(shipment_order_id: str = "ORD-1004") -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Prompt-construction regression tests
+# ---------------------------------------------------------------------------
+
+class PromptConstructionTests(unittest.TestCase):
+    def setUp(self):
+        import app.packing_inspector as pi
+        self.pi = pi
+        self.manifest = {
+            "id": "manifest-1",
+            "manifest_hash": "a" * 64,
+            "shipment_order_id": "shipment-1",
+            "items": [{
+                "id": "item-1",
+                "sku": "NOTE-A5-003",
+                "description": "A5 Hardcover Notebook",
+                "expected_qty": 1,
+                "fragile": False,
+            }],
+        }
+
+    def test_internal_sku_is_not_treated_as_a_required_visible_feature(self):
+        prompt = self.pi._build_prompt(self.manifest)
+        self.assertIn("SKU is an internal merchant/catalogue identifier", prompt)
+        self.assertIn("not expected to be printed on the product", prompt)
+        self.assertIn("Never mark an item as a mismatch or missing solely", prompt)
+        self.assertIn("human-readable description", prompt)
+
+    def test_multiple_photos_are_aggregated_as_views_of_one_shipment(self):
+        prompt = self.pi._build_prompt(self.manifest)
+        self.assertIn("one evidence set for a single shipment", prompt)
+        self.assertIn("different angles or sides of the same physical", prompt)
+        self.assertIn("Do not count a product once per photo", prompt)
+        self.assertIn("use result=UNCERTAIN, set observed_qty=null", prompt)
+
+    def test_generic_description_does_not_allow_invented_product_requirements(self):
+        prompt = self.pi._build_prompt(self.manifest)
+        self.assertIn("Do not infer unlisted requirements", prompt)
+        self.assertIn("use result=UNCERTAIN rather than inventing a mismatch", prompt)
+
+
+# ---------------------------------------------------------------------------
 # Packing inspector unit tests (no DB, no HTTP)
 # ---------------------------------------------------------------------------
 
