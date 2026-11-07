@@ -614,6 +614,27 @@ class InspectionAPITests(unittest.TestCase):
         self.assertIsNotNone(result["inspection_id"])
         self.assertEqual(result["photo_count"], 1)
 
+    def test_vision_inference_runs_off_event_loop_thread(self):
+        """Slow provider calls must not block FastAPI health checks or other requests."""
+        import threading
+        manifest = self._finalized_manifest_via_api()
+        photos = [self._make_upload(_make_jpeg())]
+        thread_ids = {}
+
+        def worker_inspection(manifest_arg, photo_metas):
+            thread_ids["worker"] = threading.get_ident()
+            return self._mock_run_inspection(manifest_arg, photo_metas)
+
+        async def execute():
+            thread_ids["event_loop"] = threading.get_ident()
+            return await self.create_packing_inspection(manifest["id"], photos)
+
+        with patch("app.main.run_inspection", side_effect=worker_inspection):
+            result = self._run_async(execute())
+
+        self.assertNotEqual(thread_ids["worker"], thread_ids["event_loop"])
+        self.assertEqual(result["inspection_status"], "PENDING_HUMAN_REVIEW")
+
     def test_create_inspection_snapshot_matches_manifest_hash(self):
         manifest = self._finalized_manifest_via_api()
         photos = [self._make_upload(_make_jpeg())]

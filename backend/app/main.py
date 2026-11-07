@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 from app.validator import validate_order
 from app.ai_analyzer import analyze_shipment_evidence
 from app.reconciliation import (
@@ -1157,7 +1158,7 @@ async def create_packing_inspection(
                 pass
         for object_path in stored_objects:
             try:
-                object_storage.delete_private_object(object_path)
+                await run_in_threadpool(object_storage.delete_private_object, object_path)
             except object_storage.StorageOperationError:
                 # Best-effort rollback; never mask the original inspection error.
                 pass
@@ -1197,7 +1198,7 @@ async def create_packing_inspection(
             extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[meta["mime_type"]]
             object_path = f"{manifest_id}/{meta['id']}{extension}"
             try:
-                object_storage.upload_private_object(object_path, raw, meta["mime_type"])
+                await run_in_threadpool(object_storage.upload_private_object, object_path, raw, meta["mime_type"])
             except object_storage.StorageConfigurationError as exc:
                 await _cleanup_stored()
                 raise HTTPException(status_code=503, detail=str(exc))
@@ -1264,7 +1265,7 @@ async def create_packing_inspection(
 
     # 5. Run the AI provider. Provider failure must not destroy the evidence.
     try:
-        result = run_inspection(manifest, photo_metas)
+        result = await run_in_threadpool(run_inspection, manifest, photo_metas)
     except GeminiUnavailableError as exc:
         await _record_ai_failure(exc, getattr(exc, "status_code", 503))
     except RuntimeError as exc:

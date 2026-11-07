@@ -230,7 +230,6 @@ export default function App() {
   // UI state for Dashboard
   const [activeTab, setActiveTab] = useState('paypal')
   const [searchQuery, setSearchQuery] = useState('')
-  const [showArchDetails, setShowArchDetails] = useState(false)
   const [batchAiLoading, setBatchAiLoading] = useState(false)
   const [batchValidateLoading, setBatchValidateLoading] = useState(false)
   const [copiedPayload, setCopiedPayload] = useState(false)
@@ -735,8 +734,6 @@ export default function App() {
           setActiveTab={setActiveTab}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          showArchDetails={showArchDetails}
-          setShowArchDetails={setShowArchDetails}
           batchAiLoading={batchAiLoading}
           batchValidateLoading={batchValidateLoading}
           readyChecksCount={readyChecksCount}
@@ -1025,8 +1022,6 @@ function ShipmentReviewMain({
   setActiveTab,
   searchQuery,
   setSearchQuery,
-  showArchDetails,
-  setShowArchDetails,
   testPayPalConnection,
   validate,
   openInspector,
@@ -1044,7 +1039,7 @@ function ShipmentReviewMain({
         <div className="breadcrumb">
           <span>Workspace</span>
           <span>/</span>
-          <strong>Export review</strong>
+          <strong>Shipment review</strong>
         </div>
         <div className="topbar-actions">
           <button
@@ -1115,8 +1110,14 @@ function ShipmentReviewMain({
           <div className="export-flow-connector"></div>
           <div className="export-flow-step">
             <span>03</span>
-            <div><strong>Packing photos</strong><small>AI observations before sealing</small></div>
-            <b>Human review</b>
+            <div><strong>Packing photos</strong><small>Photograph items before sealing</small></div>
+            <b>Upload</b>
+          </div>
+          <div className="export-flow-connector"></div>
+          <div className="export-flow-step">
+            <span>04</span>
+            <div><strong>AI and human review</strong><small>Review observations and record your decision</small></div>
+            <b>Decide</b>
           </div>
           <div className="art-tag">PAYMENT · MANIFEST · PHOTOS · HUMAN DECISION</div>
         </div>
@@ -1132,26 +1133,23 @@ function ShipmentReviewMain({
             </p>
           </div>
         </div>
-        <button
-          className="arch-criteria-toggle"
-          onClick={() => setShowArchDetails(prev => !prev)}
-          aria-expanded={showArchDetails}
-        >
-          {showArchDetails ? 'Hide details ▲' : 'What the packing review checks ▼'}
-        </button>
       </section>
 
-      {showArchDetails && (
-        <div className="arch-details-drawer export-limits">
-          <strong>What the packing review checks</strong>
-          <div className="arch-grid">
-            <div className="arch-card"><strong>Visible items</strong>Compares what can be seen in the packing photos with the finalized manifest.</div>
-            <div className="arch-card"><strong>Possible discrepancies</strong>Highlights items or quantities that may be missing, incorrect or uncertain.</div>
-            <div className="arch-card"><strong>Evidence record</strong>Keeps the photo references and manifest fingerprint with the inspection.</div>
-            <div className="arch-card"><strong>Human decision</strong>A merchant reviews the originals and approves, requests correction or rejects the packing review.</div>
+      <section className="packing-checks-section" aria-labelledby="packing-checks-title">
+        <div className="packing-checks-header">
+          <div>
+            <div className="eyebrow">PACKING REVIEW</div>
+            <h3 id="packing-checks-title">What the AI checks before you decide</h3>
+            <p>These checks stay visible because they explain the product's main job.</p>
           </div>
         </div>
-      )}
+        <div className="arch-grid">
+          <div className="arch-card"><strong>Visible items</strong>Compares what can be seen in the packing photos with the finalized manifest.</div>
+          <div className="arch-card"><strong>Possible discrepancies</strong>Highlights items or quantities that may be missing, incorrect or uncertain.</div>
+          <div className="arch-card"><strong>Photo and manifest record</strong>Keeps the original photo references and finalized manifest fingerprint with the inspection.</div>
+          <div className="arch-card"><strong>Human decision</strong>A merchant reviews the original photos and chooses approve, request correction or reject.</div>
+        </div>
+      </section>
 
       <section className="stats-grid export-stats-grid" aria-label="Packing workflow overview">
         <div className="stat-card">
@@ -1330,7 +1328,7 @@ function ShipmentReviewMain({
 
                 {order.evidence_text && (
                   <div className="evidence-snippet">
-                    <strong>Shipment note:</strong>
+                    <strong>{order.checkout_order_id ? 'Order activity:' : 'Shipment note:'}</strong>
                     {order.evidence_text}
                   </div>
                 )}
@@ -1362,7 +1360,7 @@ function ShipmentReviewMain({
                 <div className="card-footer-row">
                   <span>
                     {order.checkout_order_id
-                      ? 'Payment captured · Review the packing manifest next'
+                      ? 'Payment captured · Check the manifest before packing'
                       : 'Sample record · Not a PayPal checkout'}
                   </span>
                   <div className="card-footer-actions">
@@ -1371,7 +1369,7 @@ function ShipmentReviewMain({
                         className="btn-primary"
                         onClick={() => navigateTo('/manifests', { shipmentId: order.order_id })}
                       >
-                        Open export workflow →
+                        Open packing manifest →
                       </button>
                     ) : (
                       <>
@@ -1406,10 +1404,10 @@ function ShipmentReviewMain({
 
       <footer>
         <div>
-          <strong>PARCELPROOF</strong> · Export document review
+          <strong>PARCELPROOF</strong> · PayPal packing verification
         </div>
         <p>
-          Keep the PayPal order, shipment manifest and export documents aligned. Review each difference before you proceed.
+          Link the paid order to the packing manifest, review the pre-seal photos and record a human decision.
         </p>
       </footer>
     </main>
