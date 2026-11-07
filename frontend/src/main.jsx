@@ -1484,6 +1484,21 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
     }
   }, [selectedShipment?.order_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const status = params.get('review_status')
+    const error = params.get('review_error')
+    if (status) setReviewFeedback(`Human review recorded: ${status.replaceAll('_', ' ')}.`)
+    if (error) setReviewError(error)
+    if (status || error) {
+      params.delete('review_status')
+      params.delete('review_error')
+      params.delete('inspection_id')
+      const query = params.toString()
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
+    }
+  }, [])
+
   function handleAddItem() {
     setDraftItems(prev => [
       ...prev,
@@ -3027,20 +3042,6 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [reviewError, setReviewError] = useState('')
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const status = params.get('review_status')
-    const error = params.get('review_error')
-    if (status) setReviewFeedback(`Human review recorded: ${status.replaceAll('_', ' ')}.`)
-    if (error) setReviewError(error)
-    if (status || error) {
-      params.delete('review_status')
-      params.delete('review_error')
-      params.delete('inspection_id')
-      const query = params.toString()
-      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
-    }
-  }, [])
   const [trackingNumber, setTrackingNumber] = useState('')
   const [trackingCarrier, setTrackingCarrier] = useState('OTHER')
   const [trackingCarrierOther, setTrackingCarrierOther] = useState('')
@@ -3055,7 +3056,6 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
 
   // Load manifest & inspections list whenever active shipment changes
   useEffect(() => {
-    setReviewNotes('')
     setReviewFeedback('')
     setReviewError('')
     setTrackingNumber(selectedShipment?.tracking_number || '')
