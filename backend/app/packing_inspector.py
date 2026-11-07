@@ -868,7 +868,7 @@ def run_inspection(manifest: dict, photo_metas: list[dict]) -> dict:
             raise RuntimeError("GROQ_API_KEY is not configured.")
         if not groq_can_process:
             raise RuntimeError(
-                "Groq Qwen vision accepts at most 3 images. Gemini is required "
+                "Groq Qwen vision accepts up to three images per request. Gemini is required "
                 "to analyse all photos in this inspection."
             )
         return _run_groq_inspection(manifest, photo_metas, groq_key)
