@@ -40,10 +40,18 @@ services:
         sync: false
       - key: PAYPAL_CLIENT_SECRET
         sync: false
+      - key: PACKING_VISION_PROVIDER
+        value: auto
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_VISION_MODEL
+        value: qwen/qwen3.8-27b
+      - key: GROQ_VISION_TIMEOUT_SECONDS
+        value: "90"
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-flash-latest
+        value: gemini-3.8-flash
       - key: OPENAI_API_KEY
         value: ""
       - key: OPENAI_VISION_MODEL
