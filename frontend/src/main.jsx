@@ -1316,9 +1316,6 @@ function ShipmentReviewMain({
                 : 'PayPal not configured'}
             </span>
           </button>
-          <button className="btn-secondary" onClick={() => navigateTo('/catalogue')}>
-            Products
-          </button>
         </div>
       </header>
 
