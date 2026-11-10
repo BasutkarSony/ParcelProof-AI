@@ -3578,32 +3578,64 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                       {productReferenceContext.length > 0 && (
                         <section className="product-reference-context" aria-label="Catalogue references used by AI">
                           <div className="product-reference-context-heading">
-                            <strong>Product references supplied to AI</strong>
+                            <strong>Catalogue reference images used for comparison</strong>
                             <span>Saved once per catalogue SKU</span>
                           </div>
                           <div className="product-reference-context-list">
                             {productReferenceContext.map(profile => {
                               const statusLabel = {
-                                LOADED: 'Reference image supplied',
+                                LOADED: 'Reference image supplied to AI',
                                 GTIN_ONLY: 'GTIN context only · barcode not scanned',
                                 UNAVAILABLE: 'Saved image unavailable for this inspection',
                                 NOT_CONFIGURED: 'No image or GTIN saved',
                                 NO_PROFILE: 'No product profile saved'
                               }[profile.reference_image_status] || 'Reference status unknown'
                               return (
-                                <div className="product-reference-context-item" key={profile.sku}>
-                                  <code>{profile.sku}</code>
-                                  <span>{statusLabel}</span>
-                                  {profile.barcode_gtin && <small>GTIN {profile.barcode_gtin}</small>}
+                                <div
+                                  className="product-reference-context-item"
+                                  key={profile.sku}
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'minmax(0, 1fr) 120px',
+                                    alignItems: 'center',
+                                    gap: '12px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+                                    <code>{profile.sku}</code>
+                                    <span>{statusLabel}</span>
+                                    {profile.barcode_gtin && <small>GTIN {profile.barcode_gtin}</small>}
+                                  </div>
+                                  {profile.reference_image_status === 'LOADED' ? (
+                                    <img
+                                      src={`${API_BASE}/api/catalog/${encodeURIComponent(profile.sku)}/reference-image`}
+                                      alt={`Saved catalogue reference image for ${profile.sku}`}
+                                      loading="lazy"
+                                      style={{
+                                        width: '120px',
+                                        height: '120px',
+                                        objectFit: 'contain',
+                                        border: '1px solid var(--border-subtle)',
+                                        borderRadius: '8px',
+                                        background: 'var(--bg-surface)'
+                                      }}
+                                    />
+                                  ) : (
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                                      No reference image available
+                                    </span>
+                                  )}
                                 </div>
                               )
                             })}
                           </div>
+                          <p style={{ margin: '10px 0 0', color: 'var(--text-muted)', fontSize: '11px', lineHeight: 1.45 }}>
+                            Compare these saved catalogue images with the original packing photographs before recording a decision. AI observations are advisory; the merchant decides.
+                          </p>
                         </section>
                       )}
 
-                      
-{/* Photo Evidence Records (SHA-256 and Stored Metadata) */}
+                      /* Photo Evidence Records (SHA-256 and Stored Metadata) */}
                       <div className="photo-records-card inspection-photo-gallery">
                         <div className="records-header">
                           <div>
@@ -3676,8 +3708,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                           >
                             <input type="hidden" name="reviewer_label" value="Merchant" />
                             <p className="inspection-decision-guidance">
-                              The AI found that the two photographs show different notebooks and neither confirms the declared SKU.
-                              The recommended action is to request corrected packing evidence and keep this shipment on hold.
+                              Compare the original packing photographs with the saved catalogue reference images, declared quantities and AI observations. Record only the decision supported by the evidence; an AI MATCH is not approval by itself.
                             </p>
                             <div className="form-group">
                               <label htmlFor="review-notes">Decision note</label>
