@@ -180,7 +180,7 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
   )
 }
 
-// ─── One-time product identity profiles ─────────────────────────────────────── ───────────────────────────────────────
+// ─── One-time product identity profiles ───────────────────────────────────────
 export function ProductCatalogueView() {
   const [products, setProducts] = useState([])
   const [drafts, setDrafts] = useState({})
@@ -867,7 +867,7 @@ export default function App() {
     <div className="app-shell">
       <Sidebar
         currentPath={currentPath}
-        ordersCount={orders.length}
+        ordersCount={orders.filter(order => Boolean(order.checkout_order_id)).length}
         navigateTo={navigateTo}
       />
 
@@ -1234,7 +1234,6 @@ function ShipmentReviewMain({
   paypal,
   oauthTesting,
   oauthVerified,
-  oauthMessage,
   testPayPalConnection,
   navigateTo
 }) {
@@ -2354,7 +2353,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   const [uploading, setUploading] = useState(false)
   const [, setProcessingStatus] = useState('') // internal request-state transition; progress is elapsed-time based
   const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0)
-  const [inspectionResult, setInspectionResult] = useState(null)
+  const [, setInspectionResult] = useState(null)
   const [lastInspectionStatus, setLastInspectionStatus] = useState(null) // HTTP status of last provider failure (503 outage or 429 rate/quota limit)
   const validationRun = useState(false)
   const aiAnalysisRun = useState(false)
@@ -2666,6 +2665,9 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   )
   const isFinalized = isManifestAssociated && manifest?.status === 'FINALIZED'
   const canSelectPhotos = !loading && isFinalized && !uploading
+  const selectableOrders = orders.some(order => order.checkout_order_id)
+    ? orders.filter(order => order.checkout_order_id)
+    : orders
 
   return (
     <main className="main" id="main-content">
@@ -2701,7 +2703,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
             onChange={event => switchShipment(event.target.value)}
             disabled={uploading}
           >
-            {orders.filter(order => order.checkout_order_id).map(order => (
+            {selectableOrders.map(order => (
               <option key={order.order_id} value={order.order_id}>
                 {order.order_id}
               </option>

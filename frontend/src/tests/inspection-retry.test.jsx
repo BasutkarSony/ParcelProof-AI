@@ -6,6 +6,7 @@ vi.mock('../style.css', () => ({ default: {} }))
 
 const mockOrder = {
   order_id: 'ORD-1001',
+  checkout_order_id: 'CHECKOUT-1001',
   status: 'SHIPPED',
   carrier: 'OTHER',
   tracking_number: 'DEMO123456',
@@ -42,16 +43,17 @@ function setupPackingStation(inspectionResponses) {
   })
   vi.stubGlobal('fetch', fetchMock)
 
+  const navigateTo = vi.fn()
   render(
     <PackingStationView
       orders={[mockOrder]}
       activeShipmentId="ORD-1001"
       setActiveShipmentId={vi.fn()}
-      navigateTo={vi.fn()}
+      navigateTo={navigateTo}
     />
   )
 
-  return fetchMock
+  return { fetchMock, navigateTo }
 }
 
 async function selectPhoto() {
@@ -78,7 +80,7 @@ describe('AI inspection retry behavior', () => {
   })
 
   it('offers retry after HTTP 503 and succeeds when retried', async () => {
-    const fetchMock = setupPackingStation([
+    const { fetchMock, navigateTo } = setupPackingStation([
       jsonResponse({ detail: 'Gemini service is temporarily unavailable' }, 503),
       jsonResponse({
         id: 'inspection-1',
@@ -89,20 +91,22 @@ describe('AI inspection retry behavior', () => {
       }, 201),
     ])
 
-    expect(await screen.findByText('Packing Station & AI Vision Inspection')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Pack this order' })).toBeInTheDocument()
     await selectPhoto()
-    fireEvent.click(screen.getByRole('button', { name: /Run AI Vision Inspection/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check this order' }))
 
     expect(await screen.findByText('Gemini service is temporarily unavailable')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Retry Inspection' }))
 
-    expect(await screen.findByText(/AI Packing Inspection Completed/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(navigateTo).toHaveBeenCalledWith('/inspections', { shipmentId: 'ORD-1001' })
+    })
     expect(screen.queryByRole('button', { name: 'Retry Inspection' })).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2)
   })
 
   it('labels HTTP 429 as a quota/rate-limit retry and succeeds after the user retries', async () => {
-    const fetchMock = setupPackingStation([
+    const { fetchMock, navigateTo } = setupPackingStation([
       jsonResponse({ detail: 'Gemini rate limit or quota was reached (HTTP 429). Wait for the quota reset.' }, 429),
       jsonResponse({
         id: 'inspection-2',
@@ -113,14 +117,16 @@ describe('AI inspection retry behavior', () => {
       }, 201),
     ])
 
-    expect(await screen.findByText('Packing Station & AI Vision Inspection')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Pack this order' })).toBeInTheDocument()
     await selectPhoto()
-    fireEvent.click(screen.getByRole('button', { name: /Run AI Vision Inspection/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check this order' }))
 
     expect(await screen.findByText(/HTTP 429/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Retry after limit resets' }))
 
-    expect(await screen.findByText(/AI Packing Inspection Completed/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(navigateTo).toHaveBeenCalledWith('/inspections', { shipmentId: 'ORD-1001' })
+    })
     expect(screen.queryByRole('button', { name: 'Retry after limit resets' })).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2)
   })
@@ -129,14 +135,15 @@ describe('AI inspection retry behavior', () => {
     [422, 'Manifest is not finalized'],
     [409, 'An inspection is already in progress'],
   ])('does not offer retry for HTTP %i validation/conflict errors', async (status, detail) => {
-    setupPackingStation([jsonResponse({ detail }, status)])
+    const { navigateTo } = setupPackingStation([jsonResponse({ detail }, status)])
 
-    expect(await screen.findByText('Packing Station & AI Vision Inspection')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Pack this order' })).toBeInTheDocument()
     await selectPhoto()
-    fireEvent.click(screen.getByRole('button', { name: /Run AI Vision Inspection/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check this order' }))
 
     expect(await screen.findByText(detail)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Retry Inspection' })).not.toBeInTheDocument()
+    expect(navigateTo).not.toHaveBeenCalled()
   })
 
   it('shows an HTTP recovery message when the 503 response body is empty', async () => {
@@ -146,9 +153,9 @@ describe('AI inspection retry behavior', () => {
       text: async () => '',
     }])
 
-    expect(await screen.findByText('Packing Station & AI Vision Inspection')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Pack this order' })).toBeInTheDocument()
     await selectPhoto()
-    fireEvent.click(screen.getByRole('button', { name: /Run AI Vision Inspection/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check this order' }))
 
     expect(await screen.findByText(/HTTP 503/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry Inspection' })).toBeInTheDocument()
