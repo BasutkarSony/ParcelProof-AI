@@ -2968,6 +2968,15 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         </div>
       </header>
 
+      <section className="workspace-page-intro" aria-labelledby="packing-page-title">
+        <div className="workspace-page-intro-copy">
+          <div className="eyebrow">PRE-DISPATCH CONTROL</div>
+          <h1 id="packing-page-title">Packing Station</h1>
+          <p>Select a paid shipment, confirm its finalized manifest, then photograph the goods before sealing.</p>
+        </div>
+        <div className="workspace-page-intro-meta">1–5 photos · up to 10 MB each</div>
+      </section>
+
       <div className="packing-layout">
         {/* Left: Shipment selector */}
         <aside className="manifest-shipments-sidebar" aria-label="Select Shipment">
@@ -3424,6 +3433,14 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
         </div>
       </header>
 
+      <section className="workspace-page-intro" aria-labelledby="inspection-page-title">
+        <div className="workspace-page-intro-copy">
+          <div className="eyebrow">MERCHANT REVIEW</div>
+          <h1 id="inspection-page-title">AI Inspections &amp; Human Review</h1>
+          <p>Compare catalogue references, original packing photos and AI observations. Record the merchant decision before dispatch.</p>
+        </div>
+        <div className="workspace-page-intro-meta">AI-assisted · human decision</div>
+      </section>
 
       <div className="packing-layout inspection-layout">
         <div className="inspection-shipment-toolbar">

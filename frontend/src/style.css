@@ -4541,3 +4541,333 @@ footer p {
   .manifest-description-field { grid-column: auto; }
   .inspection-progress-card { flex-direction: column; }
 }
+
+
+/* ─── Unified workspace typography and layout ───────────────────────────────── */
+:root {
+  --font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --workspace-card-radius: 12px;
+  --workspace-section-gap: 20px;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-sans);
+}
+
+.brand-icon,
+.brand-title strong {
+  font-family: var(--font-sans);
+}
+
+.brand-title strong {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.45px;
+}
+
+.nav-item {
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.side-card-body {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.sidebar-footer {
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.main {
+  max-width: 1640px;
+  padding-left: clamp(24px, 3vw, 44px);
+  padding-right: clamp(24px, 3vw, 44px);
+}
+
+.main .topbar {
+  min-height: 68px;
+  height: auto;
+  padding: 10px 0;
+}
+
+.main .breadcrumb {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.main .topbar-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.main :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-sans) !important;
+  letter-spacing: -0.025em;
+}
+
+.main .hero {
+  padding-top: 32px;
+  padding-bottom: 26px;
+}
+
+.main .hero h1 {
+  font-size: clamp(34px, 3.5vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.main .hero-copy > p {
+  max-width: 640px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.main :is(
+  .stat-card strong,
+  .summary-title,
+  .summary-total-amount,
+  .price-amount,
+  .qty-value,
+  .observed-qty-tag,
+  .insp-photo-badge,
+  .inspection-elapsed-time
+) {
+  font-family: var(--font-sans) !important;
+}
+
+.main code,
+.main pre,
+.main .hash-code,
+.main .ev-hash,
+.main .code-pre {
+  font-family: var(--font-code);
+}
+
+.workspace-page-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 28px 0 20px;
+}
+
+.workspace-page-intro-copy {
+  min-width: 0;
+}
+
+.workspace-page-intro .eyebrow {
+  margin-bottom: 8px;
+}
+
+.workspace-page-intro h1 {
+  margin: 0;
+  color: var(--navy);
+  font-size: clamp(30px, 3vw, 38px);
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+}
+
+.workspace-page-intro p {
+  max-width: 760px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.workspace-page-intro-meta {
+  flex: 0 0 auto;
+  max-width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.main .hero,
+.workspace-page-intro {
+  min-width: 0;
+}
+
+.main .hero-art-card,
+.workspace-page-intro-meta {
+  box-shadow: var(--shadow-sm);
+}
+
+.manifest-layout,
+.packing-layout {
+  grid-template-columns: minmax(225px, 260px) minmax(0, 1fr);
+  gap: var(--workspace-section-gap);
+}
+
+.packing-layout,
+.inspection-layout {
+  padding-top: 0;
+}
+
+.manifest-shipments-sidebar,
+.manifest-header-card,
+.manifest-items-card,
+.ai-summary-callout,
+.product-reference-context,
+.photo-records-card,
+.inspection-decision-card,
+.inspection-technical-details,
+.inspection-shipment-toolbar,
+.stat-card,
+.arch-card {
+  border-radius: var(--workspace-card-radius);
+}
+
+.manifest-shipments-sidebar {
+  padding: 18px;
+}
+
+.manifest-header-card {
+  padding: 20px 22px;
+}
+
+.manifest-items-card {
+  padding: 22px;
+}
+
+.manifest-editor-panel,
+.packing-main-panel,
+.inspections-view-content {
+  gap: 16px;
+}
+
+.inspection-shipment-toolbar {
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.inspection-shipment-toolbar label {
+  font-size: 13px;
+}
+
+.inspection-shipment-toolbar .form-control,
+.main .form-control {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.inspection-layout .manifest-header-card {
+  align-items: flex-start;
+}
+
+.inspection-layout .human-review-banner {
+  border-radius: var(--workspace-card-radius);
+}
+
+.inspection-layout .inspection-decision-form {
+  gap: 16px;
+}
+
+.inspection-layout .inspection-decision-actions > button {
+  min-height: 40px;
+}
+
+.inspection-layout .inspection-technical-details {
+  margin-top: 2px;
+}
+
+.evidence-records-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+@media (max-width: 1120px) {
+  .main {
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+
+  .manifest-layout,
+  .packing-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 210px;
+  }
+
+  .main {
+    width: calc(100% - 210px);
+    margin-left: 210px;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace-page-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    margin: 22px 0 16px;
+  }
+
+  .workspace-page-intro h1 {
+    font-size: clamp(28px, 7vw, 34px);
+  }
+
+  .workspace-page-intro-meta {
+    white-space: normal;
+  }
+
+  .main .hero {
+    padding-top: 24px;
+    padding-bottom: 20px;
+  }
+
+  .main .hero h1 {
+    font-size: clamp(30px, 7vw, 38px);
+  }
+
+  .inspection-shipment-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inspection-shipment-toolbar .form-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .inspection-layout .inspection-decision-actions > button {
+    flex: 1 1 180px;
+  }
+}
+
+@media (max-width: 680px) {
+  .main {
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .main .topbar {
+    align-items: flex-start;
+  }
+
+  .main .topbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
