@@ -282,7 +282,7 @@ def init_db() -> None:
         )
         # Add columns to databases created by earlier versions without
         # replacing or deleting existing customer, order, or evidence records.
-        _ensure_column(conn, "products", "store_description", "TEXT NOT NULL DEFAULT '')
+        _ensure_column(conn, "products", "store_description", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "products", "is_active", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "products", "fragile", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "products", "barcode_gtin", "TEXT")
