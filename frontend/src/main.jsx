@@ -2036,109 +2036,57 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
                   </div>
                 ) : (
                   <>
-                    <div className="manifest-table-wrap">
-                      <table className="manifest-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '40px' }}>#</th>
-                            <th style={{ width: '130px' }}>SKU (internal)</th>
-                            <th>Product description &amp; identifying details *</th>
-                            <th style={{ width: '100px' }}>Qty *</th>
-                            <th style={{ width: '120px' }}>Unit Value ($)</th>
-                            <th style={{ width: '80px' }}>Fragile</th>
-                            {!isFinalized && <th style={{ width: '60px' }}>Action</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {draftItems.map((item, idx) => (
-                            <tr key={idx}>
-                              <td className="row-num">{idx + 1}</td>
-                              <td>
-                                {isFinalized ? (
-                                  <span className="field-readonly">{item.sku || '—'}</span>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    className="form-control"
-                                    value={item.sku}
-                                    placeholder="SKU-100"
-                                    onChange={e => handleItemChange(idx, 'sku', e.target.value)}
-                                  />
-                                )}
-                              </td>
-                              <td>
-                                {isFinalized ? (
-                                  <span className="field-readonly">{item.description}</span>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    className="form-control"
-                                    value={item.description}
-                                    placeholder="Product name + useful identifying details…"
-                                    onChange={e => handleItemChange(idx, 'description', e.target.value)}
-                                  />
-                                )}
-                              </td>
-                              <td>
-                                {isFinalized ? (
-                                  <span className="field-readonly bold">{item.expected_qty}</span>
-                                ) : (
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    className="form-control text-center"
-                                    value={item.expected_qty}
-                                    onChange={e => handleItemChange(idx, 'expected_qty', e.target.value)}
-                                  />
-                                )}
-                              </td>
-                              <td>
-                                {isFinalized ? (
-                                  <span className="field-readonly">
-                                    {item.unit_value ? `$${parseFloat(item.unit_value).toFixed(2)}` : '—'}
-                                  </span>
-                                ) : (
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    className="form-control text-right"
-                                    placeholder="0.00"
-                                    value={item.unit_value}
-                                    onChange={e => handleItemChange(idx, 'unit_value', e.target.value)}
-                                  />
-                                )}
-                              </td>
-                              <td style={{ textAlign: 'center' }}>
-                                {isFinalized ? (
-                                  item.fragile ? <span className="tag-fragile">FRAGILE</span> : <span className="text-muted">—</span>
-                                ) : (
-                                  <input
-                                    type="checkbox"
-                                    checked={item.fragile}
-                                    onChange={e => handleItemChange(idx, 'fragile', e.target.checked)}
-                                    className="fragile-checkbox"
-                                  />
-                                )}
-                              </td>
-                              {!isFinalized && (
-                                <td style={{ textAlign: 'center' }}>
-                                  <button
-                                    type="button"
-                                    className="btn-trash"
-                                    onClick={() => handleRemoveItem(idx)}
-                                    disabled={draftItems.length <= 1}
-                                    title="Remove item"
-                                  >
-                                    ✕
-                                  </button>
-                                </td>
+                    <div className="manifest-item-list">
+                      {draftItems.map((item, idx) => (
+                        <article className="manifest-item-editor-card" key={item.id || idx}>
+                          <div className="manifest-item-card-heading">
+                            <div className="manifest-item-card-title">
+                              <span className="manifest-item-index">ITEM {String(idx + 1).padStart(2, '0')}</span>
+                              {item.fragile && <span className="tag-fragile">FRAGILE HANDLING</span>}
+                            </div>
+                            {!isFinalized && (
+                              <button type="button" className="btn-trash" onClick={() => handleRemoveItem(idx)} disabled={draftItems.length <= 1} title="Remove item" aria-label="Remove item">✕</button>
+                            )}
+                          </div>
+                          <div className="manifest-item-fields">
+                            <label className="manifest-field-group manifest-sku-field">
+                              <span>SKU · internal reference</span>
+                              {isFinalized ? <code className="manifest-readonly-inline">{item.sku || '—'}</code> : (
+                                <input type="text" className="form-control" value={item.sku} placeholder="SKU-100" onChange={e => handleItemChange(idx, 'sku', e.target.value)} />
                               )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                            </label>
+                            <label className="manifest-field-group">
+                              <span>Quantity</span>
+                              {isFinalized ? <div className="manifest-readonly-value">{item.expected_qty}</div> : (
+                                <input type="number" min="1" step="1" className="form-control text-center" value={item.expected_qty} onChange={e => handleItemChange(idx, 'expected_qty', e.target.value)} />
+                              )}
+                            </label>
+                            <label className="manifest-field-group">
+                              <span>Unit value · USD</span>
+                              {isFinalized ? <div className="manifest-readonly-value">{item.unit_value ? `$${parseFloat(item.unit_value).toFixed(2)}` : '—'}</div> : (
+                                <input type="number" min="0" step="0.01" className="form-control text-right" placeholder="0.00" value={item.unit_value} onChange={e => handleItemChange(idx, 'unit_value', e.target.value)} />
+                              )}
+                            </label>
+                            <div className="manifest-field-group manifest-fragile-field">
+                              <span>Handling</span>
+                              {isFinalized ? (
+                                <div className="manifest-readonly-value">{item.fragile ? <span className="tag-fragile">FRAGILE</span> : 'Standard'}</div>
+                              ) : (
+                                <label className="manifest-fragile-control">
+                                  <input type="checkbox" checked={item.fragile} onChange={e => handleItemChange(idx, 'fragile', e.target.checked)} className="fragile-checkbox" />
+                                  <span>Fragile item</span>
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                          <label className="manifest-field-group manifest-description-field">
+                            <span>Product description &amp; identifying details *</span>
+                            {isFinalized ? <div className="field-readonly-box manifest-description-readonly">{item.description}</div> : (
+                              <textarea className="form-control manifest-description-input" rows={3} value={item.description} placeholder="Product name and the distinguishing details used during packing verification…" onChange={e => handleItemChange(idx, 'description', e.target.value)} />
+                            )}
+                          </label>
+                        </article>
+                      ))}
                     </div>
 
                     {!isFinalized && (
@@ -2691,7 +2639,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   const [photoShipmentId, setPhotoShipmentId] = useState(null)
   const [uploadError, setUploadError] = useState('')
   const [uploading, setUploading] = useState(false)
-  const [processingStatus, setProcessingStatus] = useState('') // 'uploading' | 'analyzing'
+  const [, setProcessingStatus] = useState('') // internal request-state transition; progress is elapsed-time based
+  const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0)
   const [inspectionResult, setInspectionResult] = useState(null)
   const [lastInspectionStatus, setLastInspectionStatus] = useState(null) // HTTP status of last provider failure (503 outage or 429 rate/quota limit)
   const validationRun = useState(false)
@@ -2702,8 +2651,24 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     return orders.find(o => o.order_id === activeShipmentId) || orders[0] || null
   }, [orders, activeShipmentId])
 
-  // Synchronize photosRef inside an effect instead of render
+  // Show elapsed time for the single synchronous upload-and-analysis request.
+  // No percentage is shown because the API does not stream individual stage progress.
+  useEffect(() => {
+    if (!uploading) {
+      setProcessingElapsedSeconds(0)
+      return undefined
+    }
+    const startedAt = Date.now()
+    setProcessingElapsedSeconds(0)
+    const timerId = window.setInterval(() => {
+      setProcessingElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1000)
+    return () => window.clearInterval(timerId)
+  }, [uploading])
+
   const photosRef = React.useRef([])
+
+  // Synchronize photosRef inside an effect instead of render
   useEffect(() => {
     photosRef.current = selectedPhotos
   }, [selectedPhotos])
@@ -2941,7 +2906,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     }
 
     try {
-      setProcessingStatus('analyzing')
+      setProcessingStatus('processing')
       const res = await fetch(`${API_BASE}/api/manifests/${manifest.id}/inspections`, {
         method: 'POST',
         body: formData
@@ -3163,8 +3128,13 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                       <div>
                         <strong>✓ AI Packing Inspection Completed!</strong>
                         <p style={{ margin: '4px 0 0', fontSize: '11px' }}>
-                          Status: <strong>{inspectionResult.inspection_status}</strong> · {inspectionResult.photo_count} photos evaluated with model <code>{inspectionResult.model_used}</code>.
+                          Status: <strong>{inspectionResult.inspection_status}</strong> · {inspectionResult.photo_count} packing photo(s) evaluated with model <code>{inspectionResult.model_used}</code>.
                         </p>
+                        {inspectionResult.processing_timings_ms && (
+                          <small className="inspection-timing-summary">
+                            Server time: photo storage {(inspectionResult.processing_timings_ms.photo_upload_ms / 1000).toFixed(1)}s · reference load {(inspectionResult.processing_timings_ms.catalogue_reference_ms / 1000).toFixed(1)}s · vision model {(inspectionResult.processing_timings_ms.vision_provider_ms / 1000).toFixed(1)}s
+                          </small>
+                        )}
                       </div>
                       <button
                         className="btn-primary"
@@ -3240,21 +3210,23 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
 
                     {/* Upload / Processing State Indicator */}
                     {uploading && (
-                      <div className="processing-indicator-box" role="status" aria-live="polite">
-                        <div className="checkout-state-icon loading-spinner">
-                          <SpinnerIcon />
+                      <section className="processing-indicator-box inspection-progress-card" role="status" aria-live="polite">
+                        <div className="inspection-progress-icon loading-spinner"><SpinnerIcon /></div>
+                        <div className="processing-info inspection-progress-info">
+                          <div className="inspection-progress-heading">
+                            <span className="eyebrow">PACKING INSPECTION IN PROGRESS</span>
+                            <strong className="inspection-elapsed-time">
+                              {processingElapsedSeconds < 60 ? `${processingElapsedSeconds}s elapsed` : `${Math.floor(processingElapsedSeconds / 60)}m ${processingElapsedSeconds % 60}s elapsed`}
+                            </strong>
+                          </div>
+                          <h4>Comparing packing evidence with the finalized manifest</h4>
+                          <p>ParcelProof validates and securely stores the selected photo, loads the saved catalogue reference, runs the configured vision model, then saves the result against this manifest fingerprint.</p>
+                          <div className="inspection-processing-steps" aria-label="Inspection processing stages">
+                            <span>Photo validation</span><span>Private evidence storage</span><span>Catalogue reference</span><span>Vision analysis</span><span>Save result</span>
+                          </div>
+                          <small>These steps run in one server request. Keep this page open and do not submit the same inspection again while it is processing.</small>
                         </div>
-                        <div className="processing-info">
-                          <strong>
-                            {processingStatus === 'uploading'
-                              ? 'Uploading photographs to private storage…'
-                              : 'AI vision inspecting shipment contents against the manifest…'}
-                          </strong>
-                          <p>
-                            Validating image magic bytes, extracting item counts, checking for visible packaging defects, and binding inspection to SHA-256 fingerprint snapshot.
-                          </p>
-                        </div>
-                      </div>
+                      </section>
                     )}
 
                     {/* Submit Inspection Button */}

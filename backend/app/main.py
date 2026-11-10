@@ -2,7 +2,9 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
+import time
 from pathlib import Path
 from decimal import Decimal
 from datetime import datetime, timezone
@@ -68,6 +70,9 @@ from app.store import (
     create_reconciliation_run,
     list_reconciliation_runs,
 )
+logger = logging.getLogger(__name__)
+
+
 app = FastAPI(
     title="ParcelProof AI API",
     description="PayPal-connected shipment evidence and packing verification",
@@ -1291,6 +1296,8 @@ async def create_packing_inspection(
     The manifest must exist and be FINALIZED before an inspection can be
     submitted. Inspection status is always PENDING_HUMAN_REVIEW.
     """
+    request_started_at = time.perf_counter()
+
     # 1. Resolve and validate manifest.
     manifest = get_manifest(manifest_id)
     if manifest is None:
@@ -1341,6 +1348,7 @@ async def create_packing_inspection(
                 # Best-effort rollback; never mask the original inspection error.
                 pass
 
+    photo_upload_started_at = time.perf_counter()
     for upload in photos:
         # Read in chunks, enforcing the per-file size cap before buffering.
         chunks: list[bytes] = []
@@ -1393,9 +1401,12 @@ async def create_packing_inspection(
             stored_paths.append(meta["path"])
         photo_metas.append(meta)
 
+    photo_upload_ms = round((time.perf_counter() - photo_upload_started_at) * 1000)
+
     # 4. Resolve one saved catalogue identity profile per distinct SKU.
     # Reference images are passed to vision as labelled catalogue context, not
     # as packing evidence and never count toward the inspection's photo_count.
+    reference_loading_started_at = time.perf_counter()
     reference_metas: list[dict] = []
     product_reference_context: list[dict] = []
     seen_skus: set[str] = set()
@@ -1435,6 +1446,8 @@ async def create_packing_inspection(
         elif profile.get("barcode_gtin"):
             context["reference_image_status"] = "GTIN_ONLY"
         product_reference_context.append(context)
+
+    catalogue_reference_ms = round((time.perf_counter() - reference_loading_started_at) * 1000)
 
     # 5. Build durable photo metadata before calling the external AI provider.
     photo_records = [
@@ -1492,6 +1505,7 @@ async def create_packing_inspection(
         or item.get("reference_image_status") == "UNAVAILABLE"
         for item in product_reference_context
     )
+    vision_provider_started_at = time.perf_counter()
     try:
         if has_identity_context:
             result = await run_in_threadpool(
@@ -1504,9 +1518,21 @@ async def create_packing_inspection(
         else:
             result = await run_in_threadpool(run_inspection, manifest, photo_metas)
     except GeminiUnavailableError as exc:
+        vision_provider_ms = round((time.perf_counter() - vision_provider_started_at) * 1000)
+        logger.warning(
+            "packing_inspection_provider_unavailable manifest_id=%s photo_count=%d reference_count=%d provider_elapsed_ms=%d status_code=%d",
+            manifest_id, len(photo_metas), len(reference_metas), vision_provider_ms, getattr(exc, "status_code", 503),
+        )
         await _record_ai_failure(exc, getattr(exc, "status_code", 503))
     except RuntimeError as exc:
+        vision_provider_ms = round((time.perf_counter() - vision_provider_started_at) * 1000)
+        logger.warning(
+            "packing_inspection_provider_failed manifest_id=%s photo_count=%d reference_count=%d provider_elapsed_ms=%d error_type=%s",
+            manifest_id, len(photo_metas), len(reference_metas), vision_provider_ms, type(exc).__name__,
+        )
         await _record_ai_failure(RuntimeError(f"Vision inspection failed: {exc}"), 502)
+
+    vision_provider_ms = round((time.perf_counter() - vision_provider_started_at) * 1000)
 
     # 7. Persist; clean up photos if the DB write fails.
     unavailable_references = [
@@ -1524,6 +1550,13 @@ async def create_packing_inspection(
             + ". This inspection used the manifest description without those reference images.",
         ]
 
+    engine_metadata = dict(result.get("engine_metadata") or {})
+    engine_metadata["processing_timings_ms"] = {
+        "photo_upload_ms": photo_upload_ms,
+        "catalogue_reference_ms": catalogue_reference_ms,
+        "vision_provider_ms": vision_provider_ms,
+    }
+    database_persist_started_at = time.perf_counter()
     try:
         inspection = create_inspection(
             manifest_id=manifest_id,
@@ -1531,13 +1564,28 @@ async def create_packing_inspection(
             model_used=result["model_used"],
             ai_result={
                 **ai_result,
-                "engine_metadata": result["engine_metadata"],
+                "engine_metadata": engine_metadata,
             },
             photo_records=photo_records,
         )
     except Exception:
         await _cleanup_stored()
         raise
+
+    database_persist_ms = round((time.perf_counter() - database_persist_started_at) * 1000)
+    total_elapsed_ms = round((time.perf_counter() - request_started_at) * 1000)
+    processing_timings_ms = {
+        "photo_upload_ms": photo_upload_ms,
+        "catalogue_reference_ms": catalogue_reference_ms,
+        "vision_provider_ms": vision_provider_ms,
+        "database_persist_ms": database_persist_ms,
+        "total_ms": total_elapsed_ms,
+    }
+    logger.info(
+        "packing_inspection_timing manifest_id=%s photo_count=%d reference_count=%d model=%s photo_upload_ms=%d catalogue_reference_ms=%d vision_provider_ms=%d database_persist_ms=%d total_ms=%d",
+        manifest_id, len(photo_metas), len(reference_metas), result.get("model_used"),
+        photo_upload_ms, catalogue_reference_ms, vision_provider_ms, database_persist_ms, total_elapsed_ms,
+    )
 
     # Photos are now safely referenced in the DB — do not delete them.
     # Strip any internal fields before returning.
@@ -1559,6 +1607,7 @@ async def create_packing_inspection(
         "ai_result": inspection["ai_result"],
         "review_history": inspection.get("review_history", []),
         "model_used": inspection["model_used"],
+        "processing_timings_ms": processing_timings_ms,
         "created_at": inspection["created_at"],
     }
 

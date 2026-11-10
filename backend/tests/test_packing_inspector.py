@@ -1423,6 +1423,24 @@ class GeminiResponseValidationTests(unittest.TestCase):
     def test_valid_result_passes(self):
         self._pi._validate_ai_result(self._valid_result(), self._manifest)
 
+
+    def test_gemini_client_uses_bounded_timeout_and_disables_hidden_retries(self):
+        fake_response = MagicMock()
+        fake_response.text = json.dumps(self._valid_result())
+        fake_client = MagicMock()
+        fake_client.models.generate_content.return_value = fake_response
+
+        with patch.dict(os.environ, {
+            "GEMINI_API_KEY": "fake-key",
+            "GEMINI_TIMEOUT_MS": "45000",
+        }, clear=False):
+            with patch("google.genai.Client", return_value=fake_client) as client_factory:
+                result = self._pi._run_gemini_inspection(self._manifest, [])
+
+        options = client_factory.call_args.kwargs["http_options"]
+        self.assertEqual(options.timeout, 45000)
+        self.assertEqual(options.retry_options.attempts, 1)
+        self.assertTrue(result["ai_result"]["human_review_required"])
     def test_missing_top_level_key_raises(self):
         result = self._valid_result()
         del result["image_quality"]

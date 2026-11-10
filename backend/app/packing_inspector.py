@@ -838,7 +838,18 @@ def _run_gemini_inspection(
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=api_key)
+    try:
+        timeout_ms = int(os.getenv("GEMINI_TIMEOUT_MS", "75000"))
+    except (TypeError, ValueError):
+        timeout_ms = 75000
+    timeout_ms = max(15000, min(timeout_ms, 120000))
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=timeout_ms,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
 
     # Catalogue references are sent first, then the actual packing photographs.
     # The prompt labels each reference image and explicitly forbids counting it.
