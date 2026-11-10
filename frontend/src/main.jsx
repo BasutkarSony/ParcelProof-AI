@@ -132,11 +132,8 @@ const EyeIcon = () => (
 
 // ─── Shared Sidebar Component ─────────────────────────────────────────────────
 function Sidebar({ currentPath, ordersCount, navigateTo }) {
-  const isReview = currentPath === '/'
-  const isManifests = currentPath === '/manifests'
+  const isOrders = ['/', '/manifests', '/packing', '/inspections'].includes(currentPath)
   const isCatalogue = currentPath === '/catalogue'
-  const isPacking = currentPath === '/packing'
-  const isInspections = currentPath === '/inspections'
   const isCheckout = currentPath === '/checkout' || currentPath === '/checkout/return' || currentPath === '/checkout/cancel'
 
   return (
@@ -145,84 +142,45 @@ function Sidebar({ currentPath, ordersCount, navigateTo }) {
         <div className="brand-icon" aria-hidden="true">P</div>
         <div className="brand-title">
           <strong>ParcelProof AI</strong>
-          <small>PAYPAL PACKING VERIFICATION</small>
+          <small>PAYPAL PACKING CHECK</small>
         </div>
       </div>
 
       <nav aria-label="Main navigation">
-        <div className="nav-section">PAYPAL PACKING WORKFLOW</div>
+        <div className="nav-section">WORKSPACE</div>
         <button
-          className={`nav-item nav-item-btn ${isReview ? 'active' : ''}`}
+          className={`nav-item nav-item-btn ${isOrders ? 'active' : ''}`}
           onClick={() => navigateTo('/')}
-          aria-current={isReview ? 'page' : undefined}
+          aria-current={isOrders ? 'page' : undefined}
         >
           <span aria-hidden="true">▣</span>
-          <span>Shipment Review</span>
-          <span className="nav-badge" aria-label={`${ordersCount} shipments`}>{ordersCount}</span>
-        </button>
-        <button
-          className={`nav-item nav-item-btn ${isManifests ? 'active' : ''}`}
-          onClick={() => navigateTo('/manifests')}
-          aria-current={isManifests ? 'page' : undefined}
-        >
-          <span aria-hidden="true"><ManifestIcon /></span>
-          <span>Manifests</span>
+          <span>Orders</span>
+          <span className="nav-badge" aria-label={`${ordersCount} paid orders`}>{ordersCount}</span>
         </button>
         <button
           className={`nav-item nav-item-btn ${isCatalogue ? 'active' : ''}`}
           onClick={() => navigateTo('/catalogue')}
           aria-current={isCatalogue ? 'page' : undefined}
         >
-          <span aria-hidden="true">▤</span>
-          <span>Product Catalogue</span>
-        </button>
-        <button
-          className={`nav-item nav-item-btn ${isPacking ? 'active' : ''}`}
-          onClick={() => navigateTo('/packing')}
-          aria-current={isPacking ? 'page' : undefined}
-        >
-          <span aria-hidden="true"><CameraIcon /></span>
-          <span>Packing Station</span>
-        </button>
-        <button
-          className={`nav-item nav-item-btn ${isInspections ? 'active' : ''}`}
-          onClick={() => navigateTo('/inspections')}
-          aria-current={isInspections ? 'page' : undefined}
-        >
-          <span aria-hidden="true"><EyeIcon /></span>
-          <span>AI Inspections</span>
+          <span aria-hidden="true"><ManifestIcon /></span>
+          <span>Products</span>
         </button>
 
-        <div className="nav-section" style={{ marginTop: '16px' }}>SANDBOX TOOLS</div>
+        <div className="nav-section" style={{ marginTop: '18px' }}>SANDBOX</div>
         <button
           className={`nav-item nav-item-btn ${isCheckout ? 'active' : ''}`}
           onClick={() => navigateTo('/checkout')}
           aria-current={isCheckout ? 'page' : undefined}
         >
           <span aria-hidden="true"><CartIcon /></span>
-          <span>Sandbox Checkout</span>
+          <span>Test checkout</span>
         </button>
       </nav>
-
-      <div className="side-card">
-        <div className="side-card-header">
-          <span className="pulse" aria-hidden="true"></span>
-          <span>Your packing checklist</span>
-        </div>
-        <div className="side-card-body">
-          Start with the paid order. Confirm the packing manifest, photograph the items before sealing, then review the AI observations and record your decision.
-        </div>
-      </div>
-
-      <div className="sidebar-footer">
-        <strong>PARCELPROOF</strong>
-        <p>Payment-linked packing checks with a human decision.</p>
-      </div>
     </aside>
   )
 }
 
-// ─── One-time product identity profiles ───────────────────────────────────────
+// ─── One-time product identity profiles ─────────────────────────────────────── ───────────────────────────────────────
 export function ProductCatalogueView() {
   const [products, setProducts] = useState([])
   const [drafts, setDrafts] = useState({})
@@ -1268,415 +1226,170 @@ export default function App() {
   )
 }
 
-// ─── Shipment Review Main Component ───────────────────────────────────────────
+// ─── Merchant order queue ─────────────────────────────────────────────────────
 function ShipmentReviewMain({
   orders,
-  filteredOrders,
-  results,
-  aiResults,
   loading,
   error,
   paypal,
   oauthTesting,
   oauthVerified,
   oauthMessage,
-  activeTab,
-  setActiveTab,
-  searchQuery,
-  setSearchQuery,
   testPayPalConnection,
-  validate,
-  openInspector,
   navigateTo
 }) {
-  const paidPayPalOrders = orders.filter(order => Boolean(order.checkout_order_id))
-  const shipmentDetailsMissing = paidPayPalOrders.filter(order => (
-    !order.tracking_number || !order.carrier || order.carrier === 'UNASSIGNED'
-  )).length
-  const nextActionShipment = paidPayPalOrders[0] || null
+  const paidOrders = orders.filter(order => Boolean(order.checkout_order_id))
+  const [openingOrderId, setOpeningOrderId] = useState('')
+  const [openError, setOpenError] = useState('')
+
+  async function continueOrder(order) {
+    if (!order?.order_id || openingOrderId) return
+    setOpeningOrderId(order.order_id)
+    setOpenError('')
+
+    try {
+      const manifestResponse = await fetch(
+        `${API_BASE}/api/shipments/${encodeURIComponent(order.order_id)}/manifest`
+      )
+
+      if (manifestResponse.status === 404) {
+        navigateTo('/manifests', { shipmentId: order.order_id })
+        return
+      }
+
+      const manifestData = await readApiJson(manifestResponse)
+      if (!manifestResponse.ok) {
+        throw new Error(manifestData.detail || 'Could not open this order.')
+      }
+
+      if (manifestData.status !== 'FINALIZED') {
+        navigateTo('/manifests', { shipmentId: order.order_id })
+        return
+      }
+
+      const inspectionsResponse = await fetch(
+        `${API_BASE}/api/manifests/${encodeURIComponent(manifestData.id)}/inspections`
+      )
+      const inspectionsData = await readApiJson(inspectionsResponse)
+      if (!inspectionsResponse.ok) {
+        throw new Error(inspectionsData.detail || 'Could not load this order’s packing checks.')
+      }
+
+      const latest = inspectionsData.inspections?.[0]
+      const status = latest?.inspection_status
+      const nextPath = status === 'PENDING_HUMAN_REVIEW' ||
+        status === 'APPROVED' ||
+        status === 'REJECTED'
+          ? '/inspections'
+          : '/packing'
+
+      navigateTo(nextPath, { shipmentId: order.order_id })
+    } catch (requestError) {
+      setOpenError(requestError.message || 'Could not open this order. Please try again.')
+    } finally {
+      setOpeningOrderId('')
+    }
+  }
 
   return (
-    <main className="main" id="main-content">
+    <main className="main merchant-orders-page" id="main-content">
       <header className="topbar">
         <div className="breadcrumb">
           <span>Workspace</span>
           <span>/</span>
-          <strong>Shipment review</strong>
+          <strong>Orders</strong>
         </div>
         <div className="topbar-actions">
           <button
             className="pill-status"
             onClick={testPayPalConnection}
             disabled={oauthTesting}
-            title="Click to test live PayPal Sandbox OAuth 2.0 authentication"
+            title="Check the PayPal Sandbox connection"
           >
             <span className={`pulse ${oauthVerified ? '' : 'warn'}`} aria-hidden="true"></span>
             <span>
               {oauthTesting
-                ? 'Testing Sandbox Auth…'
+                ? 'Checking PayPal…'
                 : oauthVerified
-                ? oauthMessage
+                ? 'PayPal connected'
                 : paypal.configured
-                ? 'Connect PayPal Sandbox ↗'
-                : 'PayPal Sandbox: Not Configured'}
+                ? 'Check PayPal connection'
+                : 'PayPal not configured'}
             </span>
           </button>
-          <div className="pill-status">
-            <span style={{ color: '#275619', fontWeight: 700 }}>Tracking submission: Off</span>
-          </div>
+          <button className="btn-secondary" onClick={() => navigateTo('/catalogue')}>
+            Products
+          </button>
         </div>
       </header>
 
-      <section className="hero export-hero" aria-label="PayPal-connected packing verification workflow">
-        <div className="hero-copy">
-          <div className="eyebrow">
-            <span aria-hidden="true">●</span> PAYPAL-CONNECTED PACKING VERIFICATION
-          </div>
-          <h1>
-            Catch packing mistakes
-            <br />
-            <span>before dispatch.</span>
-          </h1>
-          <p>
-            ParcelProof links a captured PayPal payment to the exact items ordered, then compares pre-seal packing photos with the finalized manifest. AI highlights possible discrepancies; you make the final decision.
-          </p>
-          <div className="export-hero-actions">
-            {nextActionShipment ? (
-              <button
-                className="btn-primary"
-                onClick={() => navigateTo('/manifests', { shipmentId: nextActionShipment.order_id })}
-              >
-                Continue {nextActionShipment.order_id} →
-              </button>
-            ) : (
-              <button className="btn-primary" onClick={() => navigateTo('/checkout')}>
-                Create PayPal Sandbox checkout →
-              </button>
-            )}
-            <span>AI observations are advisory. A merchant reviews the photos and decides.</span>
-          </div>
+      <section className="merchant-orders-heading">
+        <div>
+          <div className="eyebrow">PAYPAL ORDERS</div>
+          <h1>What needs packing?</h1>
+          <p>Choose an order. ParcelProof will take you to the next step.</p>
         </div>
-
-        <div className="hero-art-card export-flow-card" aria-label="Payment, packing manifest and pre-seal photo review steps">
-          <div className="export-flow-step">
-            <span>01</span>
-            <div><strong>PayPal payment</strong><small>Captured order and purchased items</small></div>
-            <b>Verified</b>
-          </div>
-          <div className="export-flow-connector"></div>
-          <div className="export-flow-step">
-            <span>02</span>
-            <div><strong>Packing manifest</strong><small>Confirm item descriptions and quantities</small></div>
-            <b>Finalized</b>
-          </div>
-          <div className="export-flow-connector"></div>
-          <div className="export-flow-step">
-            <span>03</span>
-            <div><strong>Packing photos</strong><small>Photograph items before sealing</small></div>
-            <b>Upload</b>
-          </div>
-          <div className="export-flow-connector"></div>
-          <div className="export-flow-step">
-            <span>04</span>
-            <div><strong>AI and human review</strong><small>Review observations and record your decision</small></div>
-            <b>Decide</b>
-          </div>
-          <div className="art-tag">PAYMENT · MANIFEST · PHOTOS · HUMAN DECISION</div>
-        </div>
+        <button className="btn-primary" onClick={() => navigateTo('/checkout')}>
+          Create test order
+        </button>
       </section>
 
-      <section className="architecture-banner export-explainer">
-        <div className="arch-info">
-          <div className="arch-badge">HOW IT WORKS</div>
-          <div className="arch-text">
-            <strong>One paid order. One traceable packing review.</strong>
-            <p>
-              The paid order becomes the packing checklist. Before sealing the parcel, the operator photographs the contents. AI compares visible items with the finalized manifest, while a merchant reviews the original photos and makes the decision.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="packing-checks-section" aria-labelledby="packing-checks-title">
-        <div className="packing-checks-header">
-          <div>
-            <div className="eyebrow">PACKING REVIEW</div>
-            <h3 id="packing-checks-title">What the AI checks before you decide</h3>
-            <p>These checks stay visible because they explain the product's main job.</p>
-          </div>
-        </div>
-        <div className="arch-grid">
-          <div className="arch-card"><strong>Visible items</strong>Compares what can be seen in the packing photos with the finalized manifest.</div>
-          <div className="arch-card"><strong>Possible discrepancies</strong>Highlights items or quantities that may be missing, incorrect or uncertain.</div>
-          <div className="arch-card"><strong>Photo and manifest record</strong>Keeps the original photo references and finalized manifest fingerprint with the inspection.</div>
-          <div className="arch-card"><strong>Human decision</strong>A merchant reviews the original photos and chooses approve, request correction or reject.</div>
-        </div>
-      </section>
-
-      <section className="stats-grid export-stats-grid" aria-label="Packing workflow overview">
-        <div className="stat-card">
-          <span>PAYPAL-LINKED SHIPMENTS</span>
-          <strong>{paidPayPalOrders.length.toString().padStart(2, '0')}</strong>
-          <small>Paid orders with a shipment record</small>
-        </div>
-        <div className="stat-card">
-          <span>NEED DISPATCH DETAILS</span>
-          <strong className={shipmentDetailsMissing > 0 ? 'red' : 'green'}>{shipmentDetailsMissing.toString().padStart(2, '0')}</strong>
-          <small>Carrier or tracking details still need to be added</small>
-        </div>
-        <div className="stat-card">
-          <span>PACKING PHOTOS</span>
-          <strong>1–5</strong>
-          <small>Photos reviewed before the parcel is sealed</small>
-        </div>
-        <div className="stat-card">
-          <span>PACKING DECISION</span>
-          <strong className="export-stat-word">HUMAN</strong>
-          <small>A merchant reviews AI observations and decides</small>
-        </div>
-      </section>
-
-      <section className="queue-header">
-        <div className="queue-title">
-          <div className="eyebrow">YOUR WORKSPACE</div>
-          <h2>Shipments to review</h2>
-          <p>Select a paid order to confirm its manifest, check the packed items and record a human review.</p>
-        </div>
-      </section>
-
-      {error && (
-        <div className="findings-box issues" role="alert" style={{ marginBottom: '20px' }}>
-          {error}
-        </div>
-      )}
-
-      <div className="filter-bar" role="toolbar" aria-label="Filter shipments">
-        <div className="filter-tabs" role="tablist">
-          <button
-            role="tab"
-            aria-selected={activeTab === 'paypal'}
-            className={`filter-tab ${activeTab === 'paypal' ? 'active' : ''}`}
-            onClick={() => setActiveTab('paypal')}
-          >
-            PayPal orders <span>{paidPayPalOrders.length}</span>
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'samples'}
-            className={`filter-tab ${activeTab === 'samples' ? 'active' : ''}`}
-            onClick={() => setActiveTab('samples')}
-          >
-            Sample records <span>{orders.length - paidPayPalOrders.length}</span>
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'delivered'}
-            className={`filter-tab ${activeTab === 'delivered' ? 'active' : ''}`}
-            onClick={() => setActiveTab('delivered')}
-          >
-            Delivered <span>{paidPayPalOrders.filter(order => order.status === 'DELIVERED').length}</span>
-          </button>
-        </div>
-        <div className="search-input-wrap">
-          <span className="search-icon" aria-hidden="true">
-            <SearchIcon />
-          </span>
-          <input
-            type="search"
-            className="search-input"
-            placeholder="Search shipments or PayPal orders…"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            aria-label="Search shipments"
-          />
-        </div>
-      </div>
+      {error && <div className="findings-box issues" role="alert">{error}</div>}
+      {openError && <div className="findings-box issues" role="alert">{openError}</div>}
 
       {loading ? (
-        <div className="order-card" style={{ textAlign: 'center', padding: '40px' }} role="status" aria-live="polite">
-          Loading shipment queue…
-        </div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="order-card" style={{ textAlign: 'center', padding: '40px' }} role="status">
-          {activeTab === 'paypal'
-            ? 'No PayPal-linked shipments yet. Create a Sandbox checkout to start a packing record.'
-            : activeTab === 'delivered'
-            ? 'No PayPal-linked shipments are marked delivered yet.'
-            : 'No sample records match this filter.'}
+        <div className="merchant-orders-empty" role="status">Loading orders…</div>
+      ) : paidOrders.length === 0 ? (
+        <div className="merchant-orders-empty">
+          <div className="merchant-orders-empty-icon"><CartIcon /></div>
+          <h2>No paid orders yet</h2>
+          <p>Complete a PayPal Sandbox checkout to create your first packing order.</p>
+          <button className="btn-primary" onClick={() => navigateTo('/checkout')}>
+            Create test order
+          </button>
         </div>
       ) : (
-        <div className="orders-grid">
-          {filteredOrders.map((order, index) => {
-            const result = results[order.order_id]
-            const status = result?.result
-            const ai = aiResults[order.order_id]
-            const scoreClass = ai?.evidence_score >= 85 ? 'high' : ai?.evidence_score >= 70 ? 'med' : 'low'
+        <section className="merchant-order-list" aria-label="Paid PayPal orders">
+          {paidOrders.map(order => {
+            const isOpening = openingOrderId === order.order_id
+            const orderStatus = order.status === 'DELIVERED'
+              ? 'Delivered'
+              : order.status === 'SHIPPED'
+                ? 'Shipped'
+                : 'Not dispatched'
 
             return (
-              <article className="order-card" key={order.order_id}>
-                <div className="order-top">
-                  <div className="order-seq" aria-hidden="true">0{index + 1}</div>
-                  <div className="order-meta">
-                    <div className="order-meta-head">
-                      <strong>{order.order_id}</strong>
-                      {order.checkout_order_id && (
-                        <span className="pill pill-pass" style={{ fontSize: '10px', padding: '2px 6px', marginLeft: '6px' }}>
-                          PAID CHECKOUT
-                        </span>
-                      )}
-                      <small>PayPal Txn: {order.transaction_id || order.paypal_capture_id || '—'}</small>
-                      {order.checkout_order_id && (
-                        <small style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                          Order: {order.checkout_order_id.slice(0, 8)}… · Capture: {order.paypal_capture_id || '—'}
-                        </small>
-                      )}
-                    </div>
-                  </div>
-                  <div className="status-badges">
-                    {ai && !ai.loading && !ai.error && (
-                      <span className={`score-chip ${scoreClass}`} title={ai.evidence_label}>
-                        Evidence Score: {ai.evidence_score}/100
-                      </span>
-                    )}
-                    <span
-                      className={
-                        'pill ' +
-                        (status === 'PASS'
-                          ? 'pill-pass'
-                          : status === 'BLOCKED'
-                          ? 'pill-blocked'
-                          : status === 'WARNING'
-                          ? 'pill-warn'
-                          : 'pill-unchecked')
-                      }
-                    >
-                      {result?.loading ? 'CHECKING…' : order.checkout_order_id ? 'PAYMENT CAPTURED' : status || 'NOT CHECKED'}
+              <article className="merchant-order-card" key={order.order_id}>
+                <div className="merchant-order-main">
+                  <div className="merchant-order-title-row">
+                    <h2>{order.order_id}</h2>
+                    <span className={`merchant-order-status ${order.status === 'DELIVERED' ? 'complete' : order.status === 'SHIPPED' ? 'shipped' : 'pending'}`}>
+                      {orderStatus}
                     </span>
                   </div>
-                </div>
-
-                <div className="details-grid">
-                  <div className="detail-col">
-                    <small>Tracking Number</small>
-                    <strong className={!order.tracking_number ? 'missing' : ''}>
-                      {order.tracking_number || 'Not added'}
-                    </strong>
-                  </div>
-                  <div className="detail-col">
-                    <small>Carrier</small>
-                    <strong>
-                      {order.carrier === 'OTHER' ? order.carrier_name_other || 'OTHER' : order.carrier === 'UNASSIGNED' || !order.carrier ? 'Not assigned' : order.carrier}
-                    </strong>
-                  </div>
-                  <div className="detail-col">
-                    <small>Shipment Status</small>
-                    <strong>{order.status === 'ON_HOLD' ? 'Awaiting dispatch' : order.status?.replaceAll('_', ' ')}</strong>
-                  </div>
-                  <div className="detail-col">
-                    <small>Order Value</small>
-                    <strong>
-                      {order.amount ? `$${Number(order.amount).toFixed(2)} ${order.currency || 'USD'}` : '—'}
-                    </strong>
-                  </div>
-                  <div className="detail-col">
-                    <small>Recipient</small>
-                    <strong>{order.buyer_name || '—'}</strong>
-                  </div>
-                  <div className="detail-col">
-                    <small>Delivery address</small>
-                    <strong>{order.shipping_address || '—'}</strong>
+                  <div className="merchant-order-meta">
+                    <span>{order.buyer_name || 'PayPal customer'}</span>
+                    <span>{order.amount ? `$${Number(order.amount).toFixed(2)} ${order.currency || 'USD'}` : 'Paid order'}</span>
                   </div>
                 </div>
-
-                {order.evidence_text && (
-                  <div className="evidence-snippet">
-                    <strong>{order.checkout_order_id ? 'Order activity:' : 'Shipment note:'}</strong>
-                    {order.evidence_text}
-                  </div>
-                )}
-
-                {result?.issues?.length > 0 && (
-                  <div className="findings-box issues">
-                    <strong>✕ Issues Requiring Resolution:</strong>
-                    {result.issues.map((issue, i) => (
-                      <p key={i}>• {issue.message}</p>
-                    ))}
-                  </div>
-                )}
-
-                {result?.warnings?.length > 0 && (
-                  <div className="findings-box warnings">
-                    <strong>! Review Recommended:</strong>
-                    {result.warnings.map((warn, i) => (
-                      <p key={i}>• {warn.message}</p>
-                    ))}
-                  </div>
-                )}
-
-                {status === 'PASS' && (
-                  <div className="pass-callout">
-                    ✓ Shipment fields passed basic format checks. This does not verify dispatch or delivery.
-                  </div>
-                )}
-
-                <div className="card-footer-row">
-                  <span>
-                    {order.checkout_order_id
-                      ? 'Payment captured · Check the manifest before packing'
-                      : 'Sample record · Not a PayPal checkout'}
-                  </span>
-                  <div className="card-footer-actions">
-                    {order.checkout_order_id ? (
-                      <button
-                        className="btn-primary"
-                        onClick={() => navigateTo('/manifests', { shipmentId: order.order_id })}
-                      >
-                        Open packing manifest →
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          className="btn-secondary"
-                          onClick={() => navigateTo('/manifests', { shipmentId: order.order_id })}
-                        >
-                          Open sample manifest ↗
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          onClick={() => validate(order)}
-                          disabled={result?.loading}
-                        >
-                          {result?.loading ? 'Checking…' : 'Validate →'}
-                        </button>
-                        <button
-                          className="btn-secondary btn-ai"
-                          onClick={() => openInspector(order)}
-                        >
-                          Inspect &amp; Remediate ↗
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
+                <button
+                  className="btn-primary merchant-order-action"
+                  onClick={() => continueOrder(order)}
+                  disabled={Boolean(openingOrderId)}
+                >
+                  {isOpening ? 'Opening…' : order.status === 'DELIVERED' || order.status === 'SHIPPED' ? 'View order' : 'Continue order'}
+                  {!isOpening && <ArrowIcon />}
+                </button>
               </article>
             )
           })}
-        </div>
+        </section>
       )}
-
-      <footer>
-        <div>
-          <strong>PARCELPROOF</strong> · PayPal packing verification
-        </div>
-        <p>
-          Link the paid order to the packing manifest, review the pre-seal photos and record a human decision.
-        </p>
-      </footer>
     </main>
   )
 }
 
-// ─── Shipment & Manifest Management View ──────────────────────────────────────
+// ─── Shipment & Manifest Management View ────────────────────────────────────── ──────────────────────────────────────
 function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, navigateTo }) {
   const [manifest, setManifest] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -1909,14 +1622,14 @@ function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, 
         <div className="breadcrumb">
           <span>Workspace</span>
           <span>/</span>
-          <strong>Shipment Management &amp; Manifests</strong>
+          <strong>Confirm order items</strong>
         </div>
         <div className="topbar-actions">
           <button
             className="btn-secondary"
             onClick={() => navigateTo('/')}
           >
-            ← Back to Evidence Review
+            ← Orders
           </button>
         </div>
       </header>
@@ -2935,6 +2648,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
       setProcessingStatus('complete')
       setUploadError('')
       setLastInspectionStatus(null)
+      navigateTo('/inspections', { shipmentId: selectedShipment.order_id })
     } catch (err) {
       setUploadError(err.message || 'Inspection request failed. Check the backend and configure GEMINI_API_KEY or OPENAI_API_KEY.')
       if (!err.status) {
@@ -2959,57 +2673,41 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         <div className="breadcrumb">
           <span>Workspace</span>
           <span>/</span>
-          <strong>Packing Station &amp; AI Vision Inspection</strong>
+          <strong>Pack order</strong>
         </div>
         <div className="topbar-actions">
-          <button className="btn-secondary" onClick={() => navigateTo('/manifests')}>
-            ← Back to Manifests
+          <button className="btn-secondary" onClick={() => navigateTo('/')}>
+            ← Orders
           </button>
         </div>
       </header>
 
       <section className="workspace-page-intro" aria-labelledby="packing-page-title">
         <div className="workspace-page-intro-copy">
-          <div className="eyebrow">PRE-DISPATCH CONTROL</div>
-          <h1 id="packing-page-title">Packing Station</h1>
-          <p>Select a paid shipment, confirm its finalized manifest, then photograph the goods before sealing.</p>
+          <div className="eyebrow">PACKING</div>
+          <h1 id="packing-page-title">Pack this order</h1>
+          <p>Check the items, then take one clear photo before sealing.</p>
         </div>
-        <div className="workspace-page-intro-meta">1–5 photos · up to 10 MB each</div>
+        
       </section>
 
-      <div className="packing-layout">
-        {/* Left: Shipment selector */}
-        <aside className="manifest-shipments-sidebar" aria-label="Select Shipment">
-          <div className="sidebar-section-title">
-            <span>SELECT SHIPMENT</span>
-            <small>{orders.length} Records</small>
-          </div>
-          <div className="manifest-shipment-cards">
-            {orders.map(order => {
-              const isSelected = selectedShipment?.order_id === order.order_id
-              return (
-                <button
-                  key={order.order_id}
-                  className={`manifest-shipment-card ${isSelected ? 'active' : ''}`}
-                  disabled={uploading}
-                  title={uploading ? 'Inspection upload in progress — shipment switching disabled' : ''}
-                  onClick={() => {
-                    switchShipment(order.order_id)
-                  }}
-                >
-                  <div className="m-card-top">
-                    <strong>{order.order_id}</strong>
-                    <span className="m-card-status">{order.status}</span>
-                  </div>
-                  <div className="m-card-details">
-                    <span>Carrier: {order.carrier || 'N/A'}</span>
-                    <span>Tracking: {order.tracking_number ? `${order.tracking_number.slice(0, 10)}…` : 'Missing'}</span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </aside>
+      <div className="packing-layout packing-layout-compact">
+        <div className="packing-order-switcher">
+          <label htmlFor="packing-order-select">Order</label>
+          <select
+            id="packing-order-select"
+            className="form-control"
+            value={selectedShipment?.order_id || ''}
+            onChange={event => switchShipment(event.target.value)}
+            disabled={uploading}
+          >
+            {orders.filter(order => order.checkout_order_id).map(order => (
+              <option key={order.order_id} value={order.order_id}>
+                {order.order_id}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Right: Packing Station Workspace */}
         <section className="packing-main-panel" aria-label="Packing Station Area">
@@ -3018,18 +2716,17 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
               {/* Manifest summary banner */}
               <div className="manifest-header-card">
                 <div className="m-header-left">
-                  <div className="eyebrow">PACKING VERIFICATION STATION</div>
+                  <div className="eyebrow">PAID ORDER</div>
                   <h2>{selectedShipment.order_id}</h2>
                   <p>
-                    Carrier: <strong>{selectedShipment.carrier || 'Unspecified'}</strong> ·
-                    Txn: <code>{selectedShipment.transaction_id}</code> ·
-                    Order Total: <strong>${Number(selectedShipment.amount || 0).toFixed(2)} {selectedShipment.currency || 'USD'}</strong>
+                    {selectedShipment.buyer_name || 'PayPal customer'} ·
+                    <strong> ${Number(selectedShipment.amount || 0).toFixed(2)} {selectedShipment.currency || 'USD'}</strong>
                   </p>
                 </div>
                 <div className="m-header-right">
                   {manifest ? (
                     <span className={`pill ${isFinalized ? 'pill-pass' : 'pill-warn'}`}>
-                      {manifest.status}
+                      {isFinalized ? 'Items confirmed' : 'Items need confirmation'}
                     </span>
                   ) : (
                     <span className="pill pill-unchecked">NO MANIFEST</span>
@@ -3050,17 +2747,16 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                   <div className="checkout-state-icon" style={{ background: 'var(--amber-bg)', color: 'var(--amber)' }}>
                     <AlertIcon />
                   </div>
-                  <h3>No Product Manifest Found</h3>
+                  <h3>Confirm the items in this order</h3>
                   <p style={{ maxWidth: '460px', margin: '0 auto' }}>
-                    Shipment <strong>{selectedShipment.order_id}</strong> does not have a manifest yet.
-                    A finalized product manifest is required before uploading packing photos for AI vision inspection.
+                    Check the paid order items once before packing.
                   </p>
                   <button
                     className="btn-primary"
                     style={{ marginTop: '14px' }}
                     onClick={() => navigateTo('/manifests', { shipmentId: selectedShipment.order_id })}
                   >
-                    Create Product Manifest →
+                    Confirm order items →
                   </button>
                 </div>
               ) : !isFinalized ? (
@@ -3069,46 +2765,47 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                   <div className="checkout-state-icon" style={{ background: 'var(--info-bg)', color: 'var(--cobalt)' }}>
                     <LockIcon />
                   </div>
-                  <h3>Manifest Is In Draft Status</h3>
+                  <h3>Confirm the items before packing</h3>
                   <p style={{ maxWidth: '460px', margin: '0 auto' }}>
-                    This shipment has a manifest with <strong>{manifest.items?.length || 0} items</strong>, but it has not been finalized.
-                    Finalization locks the manifest and generates the SHA-256 fingerprint required for packing station verification.
+                    Make sure the product names and quantities match the order.
                   </p>
                   <button
                     className="btn-primary"
                     style={{ marginTop: '14px' }}
                     onClick={() => navigateTo('/manifests', { shipmentId: selectedShipment.order_id })}
                   >
-                    Open &amp; Finalize Manifest →
+                    Review order items →
                   </button>
                 </div>
               ) : (
                 /* Finalized Manifest — Packing Station Active */
                 <div className="packing-station-workspace">
                   {/* Finalized Manifest Snapshot */}
-                  <div className="hash-display-banner">
-                    <div className="hash-info">
-                      <span className="hash-label">FINALIZED MANIFEST SNAPSHOT · SHA-256</span>
-                      <code className="hash-code">{manifest.manifest_hash}</code>
-                      <small className="hash-explanation">
-                        Inspection compares photo evidence directly against this cryptographic manifest fingerprint ({manifest.items?.length || 0} items declared).
-                      </small>
+                  <details className="packing-technical-details">
+                    <summary>Order record details</summary>
+                    <div className="hash-display-banner">
+                      <div className="hash-info">
+                        <span className="hash-label">Manifest fingerprint</span>
+                        <code className="hash-code">{manifest.manifest_hash}</code>
+                        <small className="hash-explanation">
+                          This fingerprint binds the confirmed order items and quantities to each packing check.
+                        </small>
+                      </div>
+                      <span className="finalized-lock-tag">
+                        <LockIcon /> Locked
+                      </span>
                     </div>
-                    <span className="finalized-lock-tag">
-                      <LockIcon /> Manifest Locked
-                    </span>
-                  </div>
+                  </details>
 
                   {/* Declared items preview */}
                   <div className="declared-items-preview">
-                    <strong>Declared Items for Inspection:</strong>
+                    <strong>Items in this order</strong>
                     <div className="declared-items-chips">
                       {manifest.items?.map((it, i) => (
                         <span key={i} className="declared-chip">
                           <span className="chip-qty">{it.expected_qty}x</span>
                           <span className="chip-desc">{it.description}</span>
-                          {it.sku && <span className="chip-sku">{it.sku}</span>}
-                          {it.fragile && <span className="chip-fragile">FRAGILE</span>}
+                          {it.fragile && <span className="chip-fragile">Handle with care</span>}
                         </span>
                       ))}
                     </div>
@@ -3131,36 +2828,14 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                     </div>
                   )}
 
-                  {/* Success Banner when inspection is completed in this session */}
-                  {inspectionResult && (
-                    <div className="pass-callout" role="status" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div>
-                        <strong>✓ AI Packing Inspection Completed!</strong>
-                        <p style={{ margin: '4px 0 0', fontSize: '11px' }}>
-                          Status: <strong>{inspectionResult.inspection_status}</strong> · {inspectionResult.photo_count} packing photo(s) evaluated with model <code>{inspectionResult.model_used}</code>.
-                        </p>
-                        {inspectionResult.processing_timings_ms && (
-                          <small className="inspection-timing-summary">
-                            Server time: photo storage {(inspectionResult.processing_timings_ms.photo_upload_ms / 1000).toFixed(1)}s · reference load {(inspectionResult.processing_timings_ms.catalogue_reference_ms / 1000).toFixed(1)}s · vision model {(inspectionResult.processing_timings_ms.vision_provider_ms / 1000).toFixed(1)}s
-                          </small>
-                        )}
-                      </div>
-                      <button
-                        className="btn-primary"
-                        style={{ fontSize: '11px', padding: '6px 12px' }}
-                        onClick={() => navigateTo('/inspections', { shipmentId: selectedShipment.order_id })}
-                      >
-                        View AI Inspection &amp; Human Review →
-                      </button>
-                    </div>
-                  )}
+
 
                   {/* Photo Dropzone / Upload Area */}
                   <div className="photo-upload-container">
                     <div className="upload-header">
                       <div>
-                        <h3>Packing Evidence Photographs</h3>
-                        <p>One clear overview photo showing all unpacked items before sealing is usually enough. Add another only to show a separate item, a label or visible damage; repeated angles of the same item are not required.</p>
+                        <h3>Take a packing photo</h3>
+                        <p>Show all the items before sealing. One clear photo is usually enough.</p>
                       </div>
                       <span className="pill pill-unchecked">
                         {selectedPhotos.length} / 5 Photos
@@ -3183,10 +2858,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                         <div className="dropzone-icon">
                           <CameraIcon />
                         </div>
-                        <span className="dropzone-title">Click to upload packing station photos</span>
-                        <small className="dropzone-sub">
-                          JPEG, PNG or WebP · up to 10MB each · 1–5 photos when needed.
-                        </small>
+                        <span className="dropzone-title">Choose a photo</span>
+                        <small className="dropzone-sub">A clear photo of the unpacked items.</small>
                       </label>
                     )}
 
@@ -3219,21 +2892,14 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
 
                     {/* Upload / Processing State Indicator */}
                     {uploading && (
-                      <section className="processing-indicator-box inspection-progress-card" role="status" aria-live="polite">
+                      <section className="inspection-progress-card packing-simple-progress" role="status" aria-live="polite">
                         <div className="inspection-progress-icon loading-spinner"><SpinnerIcon /></div>
-                        <div className="processing-info inspection-progress-info">
-                          <div className="inspection-progress-heading">
-                            <span className="eyebrow">PACKING INSPECTION IN PROGRESS</span>
-                            <strong className="inspection-elapsed-time">
-                              {processingElapsedSeconds < 60 ? `${processingElapsedSeconds}s elapsed` : `${Math.floor(processingElapsedSeconds / 60)}m ${processingElapsedSeconds % 60}s elapsed`}
-                            </strong>
-                          </div>
-                          <h4>Comparing packing evidence with the finalized manifest</h4>
-                          <p>ParcelProof validates and securely stores the selected photo, loads the saved catalogue reference, runs the configured vision model, then saves the result against this manifest fingerprint.</p>
-                          <div className="inspection-processing-steps" aria-label="Inspection processing stages">
-                            <span>Photo validation</span><span>Private evidence storage</span><span>Catalogue reference</span><span>Vision analysis</span><span>Save result</span>
-                          </div>
-                          <small>These steps run in one server request. Keep this page open and do not submit the same inspection again while it is processing.</small>
+                        <div className="inspection-progress-info">
+                          <h4>Checking this order</h4>
+                          <p>Comparing the photo with the products in the paid order.</p>
+                          <span className="inspection-elapsed-time">
+                            {processingElapsedSeconds < 60 ? `${processingElapsedSeconds}s` : `${Math.floor(processingElapsedSeconds / 60)}m ${processingElapsedSeconds % 60}s`}
+                          </span>
                         </div>
                       </section>
                     )}
@@ -3242,21 +2908,11 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                     <div className="upload-submit-actions">
                       <button
                         type="button"
-                        className="btn-secondary"
-                        onClick={() => navigateTo('/inspections', { shipmentId: selectedShipment.order_id })}
-                        disabled={uploading}
-                      >
-                        Inspect History ↗
-                      </button>
-                      <button
-                        type="button"
                         className="btn-primary"
                         onClick={handleSubmitInspection}
                         disabled={loading || !canSelectPhotos || uploading || selectedPhotos.length === 0}
                       >
-                        {uploading
-                          ? 'Processing AI Inspection…'
-                          : `Run AI Vision Inspection (${selectedPhotos.length} Photo${selectedPhotos.length === 1 ? '' : 's'})`}
+                        {uploading ? 'Checking…' : 'Check this order'}
                       </button>
                     </div>
                   </div>
@@ -3410,7 +3066,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const latestInspectionId = inspectionsList[0]?.inspection_id
   const isLatestInspection = Boolean(inspectionDetail && inspectionDetail.inspection_id === latestInspectionId)
   const canHumanReview = isLatestInspection && inspectionDetail?.inspection_status === 'PENDING_HUMAN_REVIEW'
-  const suggestedReviewNote = 'Verify that the photographed goods match the finalized manifest. Keep the shipment on hold until any mismatch is corrected and updated packing photos are recorded.'
+  const suggestedReviewNote = ''
   const canSubmitTracking =
     Boolean(selectedShipment?.checkout_order_id) &&
     isLatestInspection &&
@@ -3424,40 +3080,39 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
         <div className="breadcrumb">
           <span>Workspace</span>
           <span>/</span>
-          <strong>AI Packing Inspection &amp; Human Review</strong>
+          <strong>Review order</strong>
         </div>
         <div className="topbar-actions">
-          <button className="btn-secondary" onClick={() => navigateTo('/packing')}>
-            ← Back to Packing Station
+          <button className="btn-secondary" onClick={() => navigateTo('/')}>
+            ← Orders
           </button>
         </div>
       </header>
 
       <section className="workspace-page-intro" aria-labelledby="inspection-page-title">
         <div className="workspace-page-intro-copy">
-          <div className="eyebrow">MERCHANT REVIEW</div>
-          <h1 id="inspection-page-title">AI Inspections &amp; Human Review</h1>
-          <p>Compare catalogue references, original packing photos and AI observations. Record the merchant decision before dispatch.</p>
+          <div className="eyebrow">PACKING CHECK</div>
+          <h1 id="inspection-page-title">Does this order look right?</h1>
+          <p>Compare the photo with the product reference, then choose what happens next.</p>
         </div>
-        <div className="workspace-page-intro-meta">AI-assisted · human decision</div>
       </section>
 
       <div className="packing-layout inspection-layout">
         <div className="inspection-shipment-toolbar">
-          <label htmlFor="inspection-shipment-select">Shipment to review</label>
+          <label htmlFor="inspection-shipment-select">Order</label>
           <select
             id="inspection-shipment-select"
             className="form-control"
             value={selectedShipment?.order_id || ''}
             onChange={event => setActiveShipmentId(event.target.value)}
           >
-            {orders.map(order => (
+            {orders.filter(order => order.checkout_order_id).map(order => (
               <option key={order.order_id} value={order.order_id}>
-                {order.order_id} · {order.status || 'UNKNOWN'} · {order.tracking_number ? 'Tracking added' : 'No tracking'}
+                {order.order_id}
               </option>
             ))}
           </select>
-          <span>{orders.length} shipments</span>
+          
         </div>
 
         {/* Right: Inspection & Human Review Area */}
@@ -3467,12 +3122,11 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
               {/* Shipment Header */}
               <div className="manifest-header-card">
                 <div className="m-header-left">
-                  <div className="eyebrow">PERSISTED AI PACKING INSPECTION</div>
+                  <div className="eyebrow">PAID ORDER</div>
                   <h2>{selectedShipment.order_id}</h2>
                   <p>
-                    Carrier: <strong>{selectedShipment.carrier || 'Unspecified'}</strong> ·
-                    Txn: <code>{selectedShipment.transaction_id}</code> ·
-                    Order Total: <strong>${Number(selectedShipment.amount || 0).toFixed(2)} {selectedShipment.currency || 'USD'}</strong>
+                    {selectedShipment.buyer_name || 'PayPal customer'} ·
+                    <strong> ${Number(selectedShipment.amount || 0).toFixed(2)} {selectedShipment.currency || 'USD'}</strong>
                   </p>
                 </div>
                 <div className="m-header-right">
@@ -3551,30 +3205,31 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                       </div>
                       <p>
                         {inspectionDetail?.inspection_status === 'NEEDS_CORRECTION'
-                          ? 'Correction requested. This shipment remains on hold until updated packing evidence is inspected.'
+                          ? 'This order needs a fix before it can be sent.'
                           : inspectionDetail?.inspection_status === 'REJECTED'
-                          ? 'This inspection was rejected. Resolve the packing issue and submit new evidence before dispatch.'
+                          ? 'This check was rejected. Resolve the issue before dispatch.'
                           : inspectionDetail?.inspection_status === 'APPROVED'
-                          ? 'A merchant approved this inspection. Tracking remains a separate step and is available only when PayPal submission is enabled.'
-                          : 'AI provides visual observations only. The merchant makes the packing decision.'}
+                          ? 'You approved this packing check.'
+                          : 'The photo check is ready for your decision.'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Multi-inspection tabs if multiple runs exist */}
                   {inspectionsList.length > 1 && (
-                    <div className="inspection-runs-bar">
-                      <span className="runs-label">INSPECTION RUNS:</span>
+                    <details className="previous-inspections-details">
+                      <summary>Previous checks ({inspectionsList.length - 1})</summary>
+                      <div className="inspection-runs-bar">
                       {inspectionsList.map((insp, idx) => (
-                        <button
-                          key={insp.inspection_id}
-                          className={`btn-run-tab ${activeInspectionId === insp.inspection_id ? 'active' : ''}`}
-                          onClick={() => setActiveInspectionId(insp.inspection_id)}
-                        >
-                          Run #{inspectionsList.length - idx} ({new Date(insp.created_at).toLocaleTimeString()})
-                        </button>
-                      ))}
-                    </div>
+                          <button
+                            key={insp.inspection_id}
+                            className={`btn-run-tab ${activeInspectionId === insp.inspection_id ? 'active' : ''}`}
+                            onClick={() => setActiveInspectionId(insp.inspection_id)}
+                          >
+                            Run #{inspectionsList.length - idx} ({new Date(insp.created_at).toLocaleTimeString()})
+                          </button>
+                        ))}
+                      </div>
+                    </details>
                   )}
 
                   {inspectionDetail && (
@@ -3595,17 +3250,17 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                       {productReferenceContext.length > 0 && (
                         <section className="product-reference-context" aria-label="Catalogue references used by AI">
                           <div className="product-reference-context-heading">
-                            <strong>Catalogue reference images used for comparison</strong>
-                            <span>Saved once per catalogue SKU</span>
+                            <strong>Product reference</strong>
+                            <span>What this item should look like</span>
                           </div>
                           <div className="product-reference-context-list">
                             {productReferenceContext.map(profile => {
                               const statusLabel = {
-                                LOADED: 'Reference image supplied to AI',
-                                GTIN_ONLY: 'GTIN context only · barcode not scanned',
-                                UNAVAILABLE: 'Saved image unavailable for this inspection',
-                                NOT_CONFIGURED: 'No image or GTIN saved',
-                                NO_PROFILE: 'No product profile saved'
+                                LOADED: 'Compare the packed item with this photo',
+                                GTIN_ONLY: 'No reference photo saved',
+                                UNAVAILABLE: 'Reference photo unavailable',
+                                NOT_CONFIGURED: 'No reference photo saved',
+                                NO_PROFILE: 'No product reference saved'
                               }[profile.reference_image_status] || 'Reference status unknown'
                               return (
                                 <div
@@ -3656,8 +3311,8 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                       <div className="photo-records-card inspection-photo-gallery">
                         <div className="records-header">
                           <div>
-                            <h3>Persisted Evidence Photographs</h3>
-                            <p>Review the original packing photos below. Integrity records are available under each photo.</p>
+                            <h3>Packing photo</h3>
+                            <p>Original photo used for this check.</p>
                           </div>
                           <span className="pill pill-unchecked">
                             {inspectionDetail.photos?.length || 0} Photos Recorded
@@ -3698,7 +3353,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                       <div className="manifest-items-card inspection-decision-card">
                         <div className="items-card-header">
                           <div>
-                            <h3>Merchant decision</h3>
+                            <h3>Your decision</h3>
                             <p>
                               {inspectionDetail.inspection_status === 'NEEDS_CORRECTION'
                                 ? 'Correction request saved. The shipment is still on hold.'
@@ -3706,7 +3361,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                                 ? 'Rejection saved. Resolve the packing issue before a new inspection.'
                                 : inspectionDetail.inspection_status === 'APPROVED'
                                 ? 'Approval saved for this inspection.'
-                                : 'Check the original photos and decide whether this shipment can proceed.'}
+                                : 'Does the packed item match the product reference?'}
                             </p>
                           </div>
                           <span className={`pill ${inspectionDetail.inspection_status === 'APPROVED' ? 'pill-pass' : inspectionDetail.inspection_status === 'REJECTED' ? 'pill-blocked' : 'pill-warn'}`}>
@@ -3725,30 +3380,33 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                           >
                             <input type="hidden" name="reviewer_label" value="Merchant" />
                             <p className="inspection-decision-guidance">
-                              Compare the original packing photographs with the saved catalogue reference images, declared quantities and AI observations. Record only the decision supported by the evidence; an AI MATCH is not approval by itself.
+                              AI can miss details. Check the photo yourself before approving.
                             </p>
-                            <div className="form-group">
-                              <label htmlFor="review-notes">Decision note</label>
+                            <details className="review-note-details">
+                              <summary>Add a note (optional)</summary>
                               <textarea
                                 id="review-notes"
                                 name="notes"
                                 className="form-control"
-                                rows="3"
+                                rows="2"
                                 maxLength={2000}
                                 defaultValue={suggestedReviewNote}
-                                placeholder="Explain what needs to be checked or corrected."
+                                placeholder="Add a short note if something needs explaining."
                               />
-                            </div>
+                            </details>
                             <div className="inspection-decision-actions">
-                              <button type="submit" name="decision" value="NEEDS_CORRECTION" className="btn-primary">
-                                Request correction
+                              <button type="submit" name="decision" value="APPROVED" className="btn-primary">
+                                Looks correct — approve
                               </button>
-                              <button type="submit" name="decision" value="REJECTED" className="btn-secondary">
-                                Reject inspection
+                              <button type="submit" name="decision" value="NEEDS_CORRECTION" className="btn-secondary">
+                                Needs fixing
                               </button>
-                              <button type="submit" name="decision" value="APPROVED" className="btn-secondary">
-                                Approve packing review
-                              </button>
+                              <details className="review-more-options">
+                                <summary>More options</summary>
+                                <button type="submit" name="decision" value="REJECTED" className="btn-secondary">
+                                  Reject this check
+                                </button>
+                              </details>
                             </div>
                           </form>
                         ) : (
@@ -3757,13 +3415,13 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                               <p>A newer inspection exists for this shipment. Only the latest inspection can receive a human decision.</p>
                             ) : inspectionDetail.inspection_status === 'NEEDS_CORRECTION' ? (
                               <>
-                                <p>Next step: capture new photos showing the correct item and its packaging. The shipment stays on hold until a new inspection is reviewed.</p>
+                                <p>Replace the item, then take a new photo. The order will stay on hold until it passes another check.</p>
                                 <button
                                   type="button"
                                   className="btn-primary"
                                   onClick={() => navigateTo('/packing', { shipmentId: selectedShipment.order_id })}
                                 >
-                                  Capture corrected packing photos →
+                                  Replace item and take a new photo →
                                 </button>
                               </>
                             ) : inspectionDetail.inspection_status === 'REJECTED' ? (
