@@ -40,6 +40,7 @@ from app.paypal_client import (
 from app.store import (
     init_db,
     get_catalogue,
+    get_catalogue_identity_profiles,
     get_product_identity_profile,
     update_product_identity_profile,
     create_order,
@@ -178,8 +179,8 @@ def list_orders():
     return {"orders": combined}
 
 
-def _catalogue_products_response() -> list[dict]:
-    products = get_catalogue()
+def _catalogue_identity_profiles_response() -> list[dict]:
+    products = get_catalogue_identity_profiles()
     for product in products:
         product["reference_image_url"] = (
             f"/api/catalog/{product['sku']}/reference-image"
@@ -191,8 +192,14 @@ def _catalogue_products_response() -> list[dict]:
 
 @app.get("/api/catalog")
 def catalog():
-    return {"products": _catalogue_products_response()}
+    """Return only buyer-safe product copy and prices for checkout."""
+    return {"products": get_catalogue()}
 
+
+@app.get("/api/catalog/identity-profiles")
+def catalogue_identity_profiles():
+    """Return private product identity profiles for merchant setup."""
+    return {"products": _catalogue_identity_profiles_response()}
 
 @app.get("/api/catalog/{sku}/reference-image")
 def get_catalogue_reference_image(sku: str):
@@ -217,6 +224,7 @@ def get_catalogue_reference_image(sku: str):
 async def save_catalogue_identity_profile(
     sku: str,
     description: str = Form(...),
+    store_description: str | None = Form(None),
     barcode_gtin: str = Form(""),
     reference_image: UploadFile | None = File(None),
 ):
@@ -230,6 +238,15 @@ async def save_catalogue_identity_profile(
         raise HTTPException(
             status_code=422,
             detail="Product description is required and must be 500 characters or fewer.",
+        )
+    normalized_store_description = str(
+        store_description if store_description is not None
+        else profile.get("store_description", "")
+    ).strip()
+    if not normalized_store_description or len(normalized_store_description) > 180:
+        raise HTTPException(
+            status_code=422,
+            detail="A short buyer-facing description is required (180 characters or fewer).",
         )
     try:
         normalized_gtin = normalize_gtin(barcode_gtin)
@@ -280,6 +297,7 @@ async def save_catalogue_identity_profile(
         updated_profile = update_product_identity_profile(
             sku=sku,
             description=normalized_description,
+            store_description=normalized_store_description,
             barcode_gtin=normalized_gtin,
             reference_image_path=new_object_path,
             reference_image_mime_type=new_mime_type,
@@ -309,7 +327,7 @@ async def save_catalogue_identity_profile(
             pass
 
     product = next(
-        (item for item in _catalogue_products_response() if item["sku"] == sku),
+        (item for item in _catalogue_identity_profiles_response() if item["sku"] == sku),
         None,
     )
     return {"product": product, "identity_profile": {

@@ -57,6 +57,33 @@ class CatalogueIdentityApiTests(unittest.TestCase):
         store.DB_PATH = self._original_db_path
         os.unlink(self._tmp.name)
 
+    def test_checkout_catalogue_exposes_only_buyer_safe_copy(self):
+        store.update_product_identity_profile(
+            sku="MUG-CER-001",
+            description="Stoneware mug with cobalt-blue rim and botanical design.",
+            store_description="Stoneware coffee mug with a glazed finish.",
+            barcode_gtin="4006381333931",
+        )
+        public_response = self.client.get("/api/catalog")
+        self.assertEqual(public_response.status_code, 200)
+        public_product = next(
+            item for item in public_response.json()["products"]
+            if item["sku"] == "MUG-CER-001"
+        )
+        self.assertEqual(public_product["description"], "Stoneware coffee mug with a glazed finish.")
+        self.assertNotIn("barcode_gtin", public_product)
+        self.assertNotIn("has_reference_image", public_product)
+        self.assertNotIn("reference_image_url", public_product)
+
+        identity_response = self.client.get("/api/catalog/identity-profiles")
+        self.assertEqual(identity_response.status_code, 200)
+        identity_product = next(
+            item for item in identity_response.json()["products"]
+            if item["sku"] == "MUG-CER-001"
+        )
+        self.assertEqual(identity_product["description"], "Stoneware mug with cobalt-blue rim and botanical design.")
+        self.assertEqual(identity_product["store_description"], "Stoneware coffee mug with a glazed finish.")
+
     def test_invalid_gtin_does_not_upload_reference_image(self):
         with patch("app.main.object_storage.upload_private_object") as upload:
             response = self.client.put(
@@ -78,6 +105,7 @@ class CatalogueIdentityApiTests(unittest.TestCase):
                     "/api/catalog/NOTE-A5-003/identity",
                     data={
                         "description": "A5 ruled notebook, navy textured hardcover, 160 pages.",
+                        "store_description": "Hardcover ruled notebook with 160 pages.",
                         "barcode_gtin": "4006381333931",
                     },
                     files={
@@ -88,6 +116,7 @@ class CatalogueIdentityApiTests(unittest.TestCase):
                 data = response.json()
                 self.assertTrue(data["product"]["has_reference_image"])
                 self.assertEqual(data["product"]["barcode_gtin"], "4006381333931")
+                self.assertEqual(data["product"]["store_description"], "Hardcover ruled notebook with 160 pages.")
                 self.assertIn("/api/catalog/NOTE-A5-003/reference-image", data["product"]["reference_image_url"])
                 upload.assert_called_once()
                 args, kwargs = upload.call_args

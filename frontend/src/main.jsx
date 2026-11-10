@@ -198,9 +198,9 @@ export function ProductCatalogueView() {
       setLoading(true)
       setLoadError('')
       try {
-        const response = await fetch(`${API_BASE}/api/catalog`)
+        const response = await fetch(`${API_BASE}/api/catalog/identity-profiles`)
         const data = await readApiJson(response)
-        if (!response.ok) throw new Error(data.detail || 'Could not load the product catalogue.')
+        if (!response.ok) throw new Error(data.detail || 'Could not load product identity profiles.')
         if (ignore) return
         const catalogue = data.products || []
         setProducts(catalogue)
@@ -208,6 +208,7 @@ export function ProductCatalogueView() {
           product.sku,
           {
             description: product.description || '',
+            store_description: product.store_description || product.name || '',
             barcode_gtin: product.barcode_gtin || ''
           }
         ])))
@@ -243,6 +244,7 @@ export function ProductCatalogueView() {
 
     const formData = new FormData()
     formData.append('description', String(draft.description || '').trim())
+    formData.append('store_description', String(draft.store_description || '').trim())
     formData.append('barcode_gtin', String(draft.barcode_gtin || '').trim())
     if (referenceFiles[sku]) formData.append('reference_image', referenceFiles[sku])
 
@@ -261,6 +263,7 @@ export function ProductCatalogueView() {
           ...previous,
           [sku]: {
             description: data.product.description || '',
+            store_description: data.product.store_description || data.product.name || '',
             barcode_gtin: data.product.barcode_gtin || ''
           }
         }))
@@ -299,14 +302,13 @@ export function ProductCatalogueView() {
           <div className="eyebrow">PRODUCT IDENTITY</div>
           <h1>Set up each product once.</h1>
           <p>
-            Add a useful product description, one reference photo and an optional GTIN for each catalogue SKU.
-            ParcelProof reuses these details in future packing checks, so you do not need to photograph the same
-            product again for every order.
+            Write a short description for buyers, then add private product details and one reference photo for packing checks.
+            ParcelProof reuses the private profile for future orders.
           </p>
         </div>
         <div className="catalogue-identity-note">
-          <strong>Reference images stay private</strong>
-          <span>They are sent to AI as catalogue context, never counted as items in the parcel.</span>
+          <strong>Buyer copy and packing details are separate</strong>
+          <span>Only the short shop description appears at checkout. Reference photos stay private.</span>
         </div>
       </section>
 
@@ -327,6 +329,7 @@ export function ProductCatalogueView() {
           {products.map(product => {
             const draft = drafts[product.sku] || {
               description: product.description || '',
+              store_description: product.store_description || product.name || '',
               barcode_gtin: product.barcode_gtin || ''
             }
             const isSaving = savingSku === product.sku
@@ -363,19 +366,32 @@ export function ProductCatalogueView() {
                   saveProfile(product.sku)
                 }}>
                   <label className="product-profile-field">
-                    <span>Product description</span>
+                    <span>Short description for buyers</span>
                     <textarea
-                      aria-label={`Product description for ${product.name}`}
+                      aria-label={`Shop description for ${product.name}`}
+                      rows={2}
+                      maxLength={180}
+                      value={draft.store_description}
+                      onChange={event => updateDraft(product.sku, 'store_description', event.target.value)}
+                      placeholder="e.g. Stoneware coffee mug with a glazed finish."
+                      required
+                    />
+                    <small>Shown on the product page and checkout.</small>
+                  </label>
+
+                  <label className="product-profile-field">
+                    <span>Packing verification details (private)</span>
+                    <textarea
+                      aria-label={`Packing verification details for ${product.name}`}
                       rows={3}
                       maxLength={500}
                       value={draft.description}
                       onChange={event => updateDraft(product.sku, 'description', event.target.value)}
-                      placeholder="Describe the distinguishing product features…"
+                      placeholder="Describe the exact colour, material, size, finish or variant."
                       required
                     />
-                    <small>Use details that distinguish the ordered item, such as model, material, size or finish.</small>
+                    <small>Used to compare the packed item with the catalogue reference. Buyers do not see this.</small>
                   </label>
-
                   <label className="product-profile-field">
                     <span>Barcode / GTIN (optional)</span>
                     <input
@@ -388,7 +404,7 @@ export function ProductCatalogueView() {
                       onChange={event => updateDraft(product.sku, 'barcode_gtin', event.target.value)}
                       placeholder="8, 12, 13 or 14 digits"
                     />
-                    <small>Enter the printed digits. ParcelProof checks the GTIN check digit; it does not scan barcode bars.</small>
+                    <small>Enter the number printed under the barcode. ParcelProof validates its check digit.</small>
                   </label>
 
                   <label className="product-profile-field">
@@ -400,7 +416,7 @@ export function ProductCatalogueView() {
                       accept="image/jpeg,image/png,image/webp"
                       onChange={event => updateReferenceFile(product.sku, event.target.files?.[0] || null)}
                     />
-                    <small>JPEG, PNG or WebP · max 10 MB. Used as a comparison reference, not parcel evidence.</small>
+                    <small>One clear image of the actual product. Reused for future packing checks.</small>
                     {referenceFiles[product.sku] && (
                       <small className="product-profile-selected-file">Selected: {referenceFiles[product.sku].name}</small>
                     )}

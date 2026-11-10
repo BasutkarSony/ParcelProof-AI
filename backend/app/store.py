@@ -24,6 +24,7 @@ CATALOGUE = [
         "sku": "MUG-CER-001",
         "name": "Ceramic Coffee Mug",
         "description": "Stoneware coffee mug with a glazed finish.",
+        "store_description": "Stoneware coffee mug with a glazed finish.",
         "price": Decimal("18.00"),
         "fragile": True,
     },
@@ -31,6 +32,7 @@ CATALOGUE = [
         "sku": "TOTE-COT-002",
         "name": "Cotton Canvas Tote Bag",
         "description": "Reusable everyday tote made from durable cotton canvas.",
+        "store_description": "Reusable cotton canvas tote bag for everyday use.",
         "price": Decimal("14.00"),
         "fragile": False,
     },
@@ -38,6 +40,7 @@ CATALOGUE = [
         "sku": "NOTE-A5-003",
         "name": "A5 Hardcover Notebook",
         "description": "Hardcover ruled notebook with 160 pages.",
+        "store_description": "Hardcover ruled notebook with 160 pages.",
         "price": Decimal("12.50"),
         "fragile": False,
     },
@@ -123,6 +126,7 @@ def init_db() -> None:
                 sku TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT NOT NULL,
+                store_description TEXT NOT NULL DEFAULT '',
                 price_cents INTEGER NOT NULL,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 fragile INTEGER NOT NULL DEFAULT 0,
@@ -278,6 +282,7 @@ def init_db() -> None:
         )
         # Add columns to databases created by earlier versions without
         # replacing or deleting existing customer, order, or evidence records.
+        _ensure_column(conn, "products", "store_description", "TEXT NOT NULL DEFAULT '')
         _ensure_column(conn, "products", "is_active", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "products", "fragile", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "products", "barcode_gtin", "TEXT")
@@ -317,16 +322,23 @@ def init_db() -> None:
             conn.execute(
                 """
                 INSERT OR IGNORE INTO products
-                    (sku, name, description, price_cents, is_active, fragile)
-                VALUES (?, ?, ?, ?, 1, ?)
+                    (sku, name, description, store_description, price_cents, is_active, fragile)
+                VALUES (?, ?, ?, ?, ?, 1, ?)
                 """,
                 (
                     product["sku"],
                     product["name"],
                     product["description"],
+                    product["store_description"],
                     price_cents,
                     1 if product.get("fragile") else 0,
                 ),
+            )
+            # Backfill once for existing rows; later startups preserve merchant edits.
+            conn.execute(
+                "UPDATE products SET store_description = ? "
+                "WHERE sku = ? AND TRIM(COALESCE(store_description, '')) = ''",
+                (product["store_description"], product["sku"]),
             )
         conn.commit()
     finally:
@@ -334,11 +346,35 @@ def init_db() -> None:
 
 
 def get_catalogue() -> list[dict]:
+    """Return buyer-safe product data for the checkout storefront."""
     conn = _connect()
     try:
         rows = conn.execute(
-            "SELECT sku, name, description, price_cents, fragile, barcode_gtin, "
-            "reference_image_path FROM products "
+            "SELECT sku, name, store_description, price_cents, fragile "
+            "FROM products WHERE is_active = 1 ORDER BY sku"
+        ).fetchall()
+        return [
+            {
+                "sku": row["sku"],
+                "name": row["name"],
+                "description": row["store_description"] or row["name"],
+                "price": _money(row["price_cents"]),
+                "currency": "USD",
+                "fragile": bool(row["fragile"]),
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+def get_catalogue_identity_profiles() -> list[dict]:
+    """Return merchant-only product identity data used during packing checks."""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT sku, name, description, store_description, price_cents, fragile, "
+            "barcode_gtin, reference_image_path FROM products "
             "WHERE is_active = 1 ORDER BY sku"
         ).fetchall()
         return [
@@ -346,6 +382,7 @@ def get_catalogue() -> list[dict]:
                 "sku": row["sku"],
                 "name": row["name"],
                 "description": row["description"],
+                "store_description": row["store_description"] or row["name"],
                 "price": _money(row["price_cents"]),
                 "currency": "USD",
                 "fragile": bool(row["fragile"]),
@@ -357,14 +394,13 @@ def get_catalogue() -> list[dict]:
     finally:
         conn.close()
 
-
 def get_product_identity_profile(sku: str) -> dict | None:
     """Return a catalogue product's private identity-profile metadata."""
     conn = _connect()
     try:
         row = conn.execute(
             """
-            SELECT sku, name, description, barcode_gtin,
+            SELECT sku, name, description, store_description, barcode_gtin,
                    reference_image_path, reference_image_mime_type
             FROM products
             WHERE sku = ? AND is_active = 1
@@ -380,6 +416,7 @@ def update_product_identity_profile(
     sku: str,
     description: str,
     barcode_gtin: str | None,
+    store_description: str | None = None,
     reference_image_path: str | None = None,
     reference_image_mime_type: str | None = None,
 ) -> dict:
@@ -388,31 +425,38 @@ def update_product_identity_profile(
     try:
         with conn:
             row = conn.execute(
-                "SELECT sku FROM products WHERE sku = ? AND is_active = 1",
+                "SELECT sku, store_description FROM products WHERE sku = ? AND is_active = 1",
                 (sku,),
             ).fetchone()
             if row is None:
                 raise ValueError(f"Active catalogue product not found: {sku}")
+            resolved_store_description = (
+                str(store_description).strip()
+                if store_description is not None
+                else (row["store_description"] or "")
+            )
+            if not resolved_store_description:
+                raise ValueError("Buyer-facing product description must not be blank.")
 
             if reference_image_path is not None:
                 conn.execute(
                     """
                     UPDATE products
-                    SET description = ?, barcode_gtin = ?,
+                    SET description = ?, store_description = ?, barcode_gtin = ?,
                         reference_image_path = ?, reference_image_mime_type = ?
                     WHERE sku = ?
                     """,
-                    (description, barcode_gtin, reference_image_path,
-                     reference_image_mime_type, sku),
+                    (description, resolved_store_description, barcode_gtin,
+                     reference_image_path, reference_image_mime_type, sku),
                 )
             else:
                 conn.execute(
                     """
                     UPDATE products
-                    SET description = ?, barcode_gtin = ?
+                    SET description = ?, store_description = ?, barcode_gtin = ?
                     WHERE sku = ?
                     """,
-                    (description, barcode_gtin, sku),
+                    (description, resolved_store_description, barcode_gtin, sku),
                 )
         profile = get_product_identity_profile(sku)
         if profile is None:

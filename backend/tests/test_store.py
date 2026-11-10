@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app.store as store
-from app.store import init_db, get_catalogue, create_order, get_order, list_orders
+from app.store import init_db, get_catalogue, get_catalogue_identity_profiles, create_order, get_order, list_orders
 
 
 class StoreTests(unittest.TestCase):
@@ -67,9 +67,10 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(profile["reference_image_path"], "catalogue/notebook/reference.jpg")
         self.assertEqual(profile["reference_image_mime_type"], "image/jpeg")
 
-        catalogue_item = {item["sku"]: item for item in get_catalogue()}["NOTE-A5-003"]
+        catalogue_item = {item["sku"]: item for item in get_catalogue_identity_profiles()}["NOTE-A5-003"]
         self.assertTrue(catalogue_item["has_reference_image"])
         self.assertEqual(catalogue_item["barcode_gtin"], "4006381333931")
+        self.assertEqual(catalogue_item["description"], "A5 hardcover notebook, navy linen cover, elastic strap, 160 ruled pages.")
 
     def test_updating_gtin_and_description_preserves_saved_reference_image(self):
         store.update_product_identity_profile(
@@ -123,6 +124,27 @@ class StoreTests(unittest.TestCase):
         )
         self.assertEqual(manifest["items"][0]["sku"], "NOTE-A5-003")
 
+
+    def test_buyer_copy_is_separate_from_private_packing_identity(self):
+        store.update_product_identity_profile(
+            sku="MUG-CER-001",
+            description="Stoneware mug, cobalt-blue rim, white body, blue botanical print.",
+            store_description="Stoneware coffee mug with a glazed finish.",
+            barcode_gtin=None,
+        )
+        public_item = {item["sku"]: item for item in get_catalogue()}["MUG-CER-001"]
+        private_item = {
+            item["sku"]: item for item in get_catalogue_identity_profiles()
+        }["MUG-CER-001"]
+
+        self.assertEqual(public_item["description"], "Stoneware coffee mug with a glazed finish.")
+        self.assertNotIn("cobalt-blue", public_item["description"])
+        self.assertNotIn("barcode_gtin", public_item)
+        self.assertEqual(
+            private_item["description"],
+            "Stoneware mug, cobalt-blue rim, white body, blue botanical print.",
+        )
+        self.assertEqual(private_item["store_description"], public_item["description"])
 
     def test_catalogue_prices_match_decimal(self):
         products = {p["sku"]: p for p in get_catalogue()}

@@ -11,7 +11,8 @@ const jsonResponse = (data, status = 200) => ({
 const catalogue = [{
   sku: 'NOTE-A5-003',
   name: 'A5 Hardcover Notebook',
-  description: 'Hardcover ruled notebook with 160 pages.',
+  description: 'A5 notebook with navy hardcover, elastic strap and 160 ruled pages.',
+  store_description: 'Hardcover ruled notebook with 160 pages.',
   currency: 'USD',
   price: '12.50',
   fragile: false,
@@ -23,7 +24,7 @@ const catalogue = [{
 describe('Product catalogue identity profiles', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async url => {
-      if (String(url).endsWith('/api/catalog')) return jsonResponse({ products: catalogue })
+      if (String(url).endsWith('/api/catalog/identity-profiles')) return jsonResponse({ products: catalogue })
       return jsonResponse({ detail: 'Not found' }, 404)
     }))
   })
@@ -37,12 +38,13 @@ describe('Product catalogue identity profiles', () => {
     const updatedProduct = {
       ...catalogue[0],
       description: 'A5 ruled notebook, navy textured hardcover, elastic strap and 160 pages.',
+      store_description: 'A5 hardcover notebook with a navy cover.',
       barcode_gtin: '4006381333931',
       has_reference_image: true,
       reference_image_url: '/api/catalog/NOTE-A5-003/reference-image',
     }
     fetch.mockImplementation(async (url, options) => {
-      if (String(url).endsWith('/api/catalog')) return jsonResponse({ products: catalogue })
+      if (String(url).endsWith('/api/catalog/identity-profiles')) return jsonResponse({ products: catalogue })
       if (String(url).endsWith('/api/catalog/NOTE-A5-003/identity') && options?.method === 'PUT') {
         return jsonResponse({ product: updatedProduct })
       }
@@ -54,7 +56,10 @@ describe('Product catalogue identity profiles', () => {
     expect(await screen.findByRole('heading', { name: 'Set up each product once.' })).toBeInTheDocument()
     expect(await screen.findByText('A5 Hardcover Notebook')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Product description for A5 Hardcover Notebook'), {
+    fireEvent.change(screen.getByLabelText('Shop description for A5 Hardcover Notebook'), {
+      target: { value: updatedProduct.store_description },
+    })
+    fireEvent.change(screen.getByLabelText('Packing verification details for A5 Hardcover Notebook'), {
       target: { value: updatedProduct.description },
     })
     fireEvent.change(screen.getByLabelText('GTIN for A5 Hardcover Notebook'), {
@@ -74,6 +79,7 @@ describe('Product catalogue identity profiles', () => {
     )
     expect(uploadCall[1].method).toBe('PUT')
     expect(uploadCall[1].body.get('description')).toBe(updatedProduct.description)
+    expect(uploadCall[1].body.get('store_description')).toBe(updatedProduct.store_description)
     expect(uploadCall[1].body.get('barcode_gtin')).toBe('4006381333931')
     expect(uploadCall[1].body.get('reference_image').name).toBe('notebook.jpg')
     expect(screen.getByRole('img', { name: /Saved catalogue reference/ }).getAttribute('src'))

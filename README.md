@@ -253,6 +253,7 @@ ParcelProof AI is a hackathon prototype, not an official PayPal product.
 
 - Shipment evidence checks use deterministic rules and text-pattern heuristics. Packing-photo observations use Gemini Vision, with an optional OpenAI Vision fallback.
 - Vision-model outputs can be wrong and require human review.
+- Buyer-facing product descriptions are stored separately from private packing-verification details. Checkout returns buyer-safe product copy and prices; private identity details, optional GTIN and reference-image metadata are served to the merchant product-setup workflow.
 - Product reference images and optional GTINs can be saved once per catalogue SKU. Visual comparison supports product checking but does not prove an exact SKU, and GTIN digits are entered by the merchant rather than optically decoded by the app.
 - A photograph cannot prove the contents of a sealed package.
 - The hosted demo uses one shared password, not individual merchant accounts or role-based access control; reviewer labels are still self-entered demo labels, not verified identities.
