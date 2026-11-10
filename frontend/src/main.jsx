@@ -3635,7 +3635,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                         </section>
                       )}
 
-                      /* Photo Evidence Records (SHA-256 and Stored Metadata) */}
+                      {/* Photo Evidence Records (SHA-256 and Stored Metadata) */}
                       <div className="photo-records-card inspection-photo-gallery">
                         <div className="records-header">
                           <div>
