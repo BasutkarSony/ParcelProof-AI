@@ -1385,510 +1385,180 @@ function ShipmentReviewMain({
   )
 }
 
-// ─── Shipment & Manifest Management View ────────────────────────────────────── ──────────────────────────────────────
-function ShipmentsManifestView({ orders, activeShipmentId, setActiveShipmentId, navigateTo }) {
+// ─── Simple paid-order item confirmation ──────────────────────────────────────
+export function ShipmentsManifestView({ orders, activeShipmentId, navigateTo }) {
+  const paidOrders = orders.filter(order => Boolean(order.checkout_order_id))
+  const selectedShipment = paidOrders.find(order => order.order_id === activeShipmentId) || paidOrders[0] || null
   const [manifest, setManifest] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState('')
-  const [saveLoading, setSaveLoading] = useState(false)
-  const [finalizeLoading, setFinalizeLoading] = useState(false)
-  const [saveSuccess, setSaveSuccess] = useState('')
 
-  // Form draft state for editing/creating items
-  const [draftItems, setDraftItems] = useState([
-    { sku: '', description: '', expected_qty: 1, unit_value: '', fragile: false }
-  ])
-  const [draftNotes, setDraftNotes] = useState('')
-
-  const selectedShipment = useMemo(() => {
-    return orders.find(o => o.order_id === activeShipmentId) || orders[0] || null
-  }, [orders, activeShipmentId])
-
-  // Load manifest when activeShipmentId changes
   useEffect(() => {
     let ignore = false
-    async function fetchManifest() {
-      if (!selectedShipment) return
-      setLoading(true)
+
+    async function loadPaidOrderItems() {
+      setManifest(null)
       setError('')
-      setSaveSuccess('')
+      if (!selectedShipment) {
+        setLoading(false)
+        return
+      }
+
+      setLoading(true)
       try {
-        const res = await fetch(`${API_BASE}/api/shipments/${selectedShipment.order_id}/manifest`)
+        const response = await fetch(
+          `${API_BASE}/api/shipments/${encodeURIComponent(selectedShipment.order_id)}/manifest`
+        )
+        const data = await readApiJson(response)
         if (ignore) return
-        if (res.status === 404) {
-          setManifest(null)
-          setDraftItems([
-            { sku: '', description: '', expected_qty: 1, unit_value: '', fragile: false }
-          ])
-          setDraftNotes('')
-        } else if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.detail || 'Could not load manifest')
-        } else {
-          const data = await res.json()
-          if (ignore) return
-          setManifest(data)
-          setDraftItems(
-            data.items.map(it => ({
-              id: it.id,
-              sku: it.sku || '',
-              description: it.description || '',
-              expected_qty: it.expected_qty,
-              unit_value: it.unit_value_cents !== null && it.unit_value_cents !== undefined
-                ? (it.unit_value_cents / 100).toFixed(2)
-                : '',
-              fragile: Boolean(it.fragile)
-            }))
-          )
-          setDraftNotes(data.notes || '')
+        if (!response.ok) {
+          throw new Error(data.detail || 'Could not load the items for this order.')
         }
-      } catch (err) {
-        if (!ignore) setError(err.message || 'Error loading manifest')
+        setManifest(data)
+      } catch (loadError) {
+        if (!ignore) setError(loadError.message || 'Could not load this order.')
       } finally {
         if (!ignore) setLoading(false)
       }
     }
 
-    fetchManifest()
-    return () => {
-      ignore = true
+    loadPaidOrderItems()
+    return () => { ignore = true }
+  }, [selectedShipment?.order_id])
+
+  async function confirmItemsAndContinue() {
+    if (!selectedShipment || !manifest || confirming) return
+
+    if (manifest.status === 'FINALIZED') {
+      navigateTo('/packing', { shipmentId: selectedShipment.order_id })
+      return
     }
-  }, [selectedShipment?.order_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const status = params.get('review_status')
-    const error = params.get('review_error')
-    if (status) setReviewFeedback(`Human review recorded: ${status.replaceAll('_', ' ')}.`)
-    if (error) setReviewError(error)
-    if (status || error) {
-      params.delete('review_status')
-      params.delete('review_error')
-      params.delete('inspection_id')
-      const query = params.toString()
-      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
+    if (manifest.status !== 'DRAFT' || !Array.isArray(manifest.items) || manifest.items.length === 0) {
+      setError('The paid order does not have a confirmable item list. Return to Orders and reopen it.')
+      return
     }
-  }, [])
 
-  function handleAddItem() {
-    setDraftItems(prev => [
-      ...prev,
-      { sku: '', description: '', expected_qty: 1, unit_value: '', fragile: false }
-    ])
-  }
-
-  function handleRemoveItem(index) {
-    if (draftItems.length <= 1) return
-    setDraftItems(prev => prev.filter((_, idx) => idx !== index))
-  }
-
-  function handleItemChange(index, field, value) {
-    setDraftItems(prev => {
-      const updated = [...prev]
-      updated[index] = { ...updated[index], [field]: value }
-      return updated
-    })
-  }
-
-  async function handleSaveManifest() {
-    if (!selectedShipment) return
+    setConfirming(true)
     setError('')
-    setSaveSuccess('')
-
-    // Strict validation
-    for (let i = 0; i < draftItems.length; i++) {
-      const it = draftItems[i]
-      if (!it.description.trim()) {
-        setError(`Item #${i + 1}: Description is required.`)
-        return
-      }
-
-      // Quantity validation using Number.isSafeInteger to reject fractional, NaN, zero, and negative
-      const rawQty = it.expected_qty
-      if (typeof rawQty === 'string' && rawQty.trim() === '') {
-        setError(`Item #${i + 1}: Expected quantity is required.`)
-        return
-      }
-      const numQty = Number(rawQty)
-      if (!Number.isSafeInteger(numQty) || numQty <= 0) {
-        setError(`Item #${i + 1}: Expected quantity must be a positive integer (received "${rawQty}").`)
-        return
-      }
-
-      // Unit value validation: finite, non-negative number before converting to cents
-      if (it.unit_value !== '' && it.unit_value !== null && it.unit_value !== undefined) {
-        const valStr = String(it.unit_value).trim()
-        if (valStr !== '') {
-          const numVal = Number(valStr)
-          if (!Number.isFinite(numVal) || numVal < 0) {
-            setError(`Item #${i + 1}: Unit value must be a finite, non-negative number (received "${it.unit_value}").`)
-            return
-          }
-        }
-      }
-    }
-
-    const payloadItems = draftItems.map(it => {
-      const numQty = Number(it.expected_qty)
-      const valStr = it.unit_value !== '' && it.unit_value !== null && it.unit_value !== undefined ? String(it.unit_value).trim() : ''
-      const parsedUnitValue = valStr !== '' && Number.isFinite(Number(valStr))
-        ? Math.round(Number(valStr) * 100)
-        : null
-
-      return {
-        sku: it.sku?.trim() || null,
-        description: it.description.trim(),
-        expected_qty: numQty,
-        unit_value_cents: parsedUnitValue,
-        fragile: Boolean(it.fragile)
-      }
-    })
-
-    const payload = {
-      items: payloadItems,
-      notes: draftNotes.trim() || null
-    }
-
-    setSaveLoading(true)
     try {
-      let res
-      if (manifest && manifest.id && manifest.status === 'DRAFT') {
-        // Update existing DRAFT
-        res = await fetch(`${API_BASE}/api/manifests/${manifest.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-      } else {
-        // Create initial manifest for this shipment
-        res = await fetch(`${API_BASE}/api/shipments/${selectedShipment.order_id}/manifest`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-      }
-
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to save manifest')
-      }
-
-      setManifest(data)
-      setSaveSuccess('Manifest saved as DRAFT successfully.')
-      setTimeout(() => setSaveSuccess(''), 3000)
-    } catch (err) {
-      setError(err.message || 'Error saving manifest.')
-    } finally {
-      setSaveLoading(false)
-    }
-  }
-
-  async function handleFinalizeManifest() {
-    if (!manifest || !manifest.id) return
-    setError('')
-    setSaveSuccess('')
-    setFinalizeLoading(true)
-    try {
-      const res = await fetch(`${API_BASE}/api/manifests/${manifest.id}/finalize`, {
+      const response = await fetch(`${API_BASE}/api/manifests/${manifest.id}/finalize`, {
         method: 'POST'
       })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to finalize manifest')
+      const data = await readApiJson(response)
+      if (!response.ok) {
+        throw new Error(data.detail || 'Could not confirm these order items.')
       }
       setManifest(data)
-      setSaveSuccess('Manifest FINALIZED! Cryptographic SHA-256 fingerprint generated.')
-    } catch (err) {
-      setError(err.message || 'Error finalizing manifest.')
+      navigateTo('/packing', { shipmentId: selectedShipment.order_id })
+    } catch (confirmError) {
+      setError(confirmError.message || 'Could not confirm this order. Please try again.')
     } finally {
-      setFinalizeLoading(false)
+      setConfirming(false)
     }
   }
 
-  const isFinalized = manifest?.status === 'FINALIZED'
-  const manifestTotalValue = draftItems.reduce((acc, it) => {
-    const val = parseFloat(it.unit_value) || 0
-    const qty = parseInt(it.expected_qty, 10) || 0
-    return acc + (val * qty)
-  }, 0)
-
   return (
-    <main className="main" id="main-content">
+    <main className="main order-confirmation-page" id="main-content">
       <header className="topbar">
         <div className="breadcrumb">
-          <span>Workspace</span>
+          <span>Orders</span>
           <span>/</span>
-          <strong>Confirm order items</strong>
+          <strong>Confirm items</strong>
         </div>
         <div className="topbar-actions">
-          <button
-            className="btn-secondary"
-            onClick={() => navigateTo('/')}
-          >
+          <button className="btn-secondary" onClick={() => navigateTo('/')}>
             ← Orders
           </button>
         </div>
       </header>
 
-      <div className="manifest-layout">
-        {/* Left: Shipment Selector List */}
-        <aside className="manifest-shipments-sidebar" aria-label="Select Shipment">
-          <div className="sidebar-section-title">
-            <span>ACTIVE SHIPMENTS</span>
-            <small>{orders.length} Records</small>
-          </div>
-          <div className="manifest-shipment-cards">
-            {orders.map(order => {
-              const isSelected = selectedShipment?.order_id === order.order_id
-              return (
-                <button
-                  key={order.order_id}
-                  className={`manifest-shipment-card ${isSelected ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveShipmentId(order.order_id)
-                  }}
-                >
-                  <div className="m-card-top">
-                    <strong>{order.order_id}</strong>
-                    <span className="m-card-status">{order.status}</span>
-                  </div>
-                  <div className="m-card-details">
-                    <span>Carrier: {order.carrier || 'N/A'}</span>
-                    <span>Tracking: {order.tracking_number ? `${order.tracking_number.slice(0, 10)}…` : 'Missing'}</span>
-                  </div>
-                  <div className="m-card-dest">{order.shipping_address || 'No destination'}</div>
-                </button>
-              )
-            })}
-          </div>
-        </aside>
-
-        {/* Right: Manifest Editor & Details */}
-        <section className="manifest-editor-panel" aria-label="Manifest Details">
-          {selectedShipment ? (
-            <>
-              {/* Shipment Header Banner */}
-              <div className="manifest-header-card">
-                <div className="m-header-left">
-                  <div className="eyebrow">SHIPMENT PRODUCT MANIFEST</div>
-                  <h2>{selectedShipment.order_id}</h2>
-                  <p>
-                    Carrier: <strong>{selectedShipment.carrier || 'Unspecified'}</strong> ·
-                    Txn: <code>{selectedShipment.transaction_id || selectedShipment.paypal_capture_id || '—'}</code> ·
-                    Order Total: <strong>${Number(selectedShipment.amount || 0).toFixed(2)} {selectedShipment.currency || 'USD'}</strong>
-                    {selectedShipment.checkout_order_id && (
-                      <> · Order: <code>{selectedShipment.checkout_order_id.slice(0, 8)}…</code></>
-                    )}
-                  </p>
-                </div>
-                <div className="m-header-right">
-                  {manifest ? (
-                    <div className="manifest-status-badge-wrap">
-                      <span className={`pill ${isFinalized ? 'pill-pass' : 'pill-warn'}`}>
-                        {manifest.status}
-                      </span>
-                      {isFinalized && (
-                        <div className="finalized-lock-tag">
-                          <LockIcon /> Sealed &amp; Hashed
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="pill pill-unchecked">NO MANIFEST</span>
-                  )}
-                </div>
-              </div>
-
-              {/* SHA-256 Fingerprint Callout for Finalized Manifests */}
-              {isFinalized && manifest.manifest_hash && (
-                <div className="hash-display-banner">
-                  <div className="hash-info">
-                    <span className="hash-label">CRYPTOGRAPHIC SHA-256 FINGERPRINT</span>
-                    <code className="hash-code">{manifest.manifest_hash}</code>
-                    <small className="hash-explanation">
-                      Deterministic manifest hash binds declared items, quantities, and values. Manifest is immutably locked against tampering.
-                    </small>
-                  </div>
-
-                </div>
-              )}
-
-              {/* Alert notifications */}
-              {error && (
-                <div className="findings-box issues" role="alert" style={{ marginBottom: '16px' }}>
-                  {error}
-                </div>
-              )}
-              {saveSuccess && (
-                <div className="pass-callout" role="status" style={{ marginBottom: '16px' }}>
-                  ✓ {saveSuccess}
-                </div>
-              )}
-
-              {/* Manifest Items Table / Form */}
-              <div className="manifest-items-card">
-                <div className="items-card-header">
-                  <div>
-                    <h3>Declared Manifest Items</h3>
-                    <p>Confirm each paid-order item and quantity. SKU is your internal reference, not a code the AI expects to read from the product. Add only useful distinguishing details to the description.</p>
-                  </div>
-                  <div className="items-header-stats">
-                    <span className="stat-pill">Items: {draftItems.length}</span>
-                    <span className="stat-pill">Est. Value: ${manifestTotalValue.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {loading ? (
-                  <div className="checkout-state-box" style={{ padding: '30px' }} role="status">
-                    <div className="checkout-state-icon loading-spinner"><SpinnerIcon /></div>
-                    <p>Loading manifest details…</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="manifest-item-list">
-                      {draftItems.map((item, idx) => (
-                        <article className="manifest-item-editor-card" key={item.id || idx}>
-                          <div className="manifest-item-card-heading">
-                            <div className="manifest-item-card-title">
-                              <span className="manifest-item-index">ITEM {String(idx + 1).padStart(2, '0')}</span>
-                              {item.fragile && <span className="tag-fragile">FRAGILE HANDLING</span>}
-                            </div>
-                            {!isFinalized && (
-                              <button type="button" className="btn-trash" onClick={() => handleRemoveItem(idx)} disabled={draftItems.length <= 1} title="Remove item" aria-label="Remove item">✕</button>
-                            )}
-                          </div>
-                          <div className="manifest-item-fields">
-                            <label className="manifest-field-group manifest-sku-field">
-                              <span>SKU · internal reference</span>
-                              {isFinalized ? <code className="manifest-readonly-inline">{item.sku || '—'}</code> : (
-                                <input type="text" className="form-control" value={item.sku} placeholder="SKU-100" onChange={e => handleItemChange(idx, 'sku', e.target.value)} />
-                              )}
-                            </label>
-                            <label className="manifest-field-group">
-                              <span>Quantity</span>
-                              {isFinalized ? <div className="manifest-readonly-value">{item.expected_qty}</div> : (
-                                <input type="number" min="1" step="1" className="form-control text-center" value={item.expected_qty} onChange={e => handleItemChange(idx, 'expected_qty', e.target.value)} />
-                              )}
-                            </label>
-                            <label className="manifest-field-group">
-                              <span>Unit value · USD</span>
-                              {isFinalized ? <div className="manifest-readonly-value">{item.unit_value ? `$${parseFloat(item.unit_value).toFixed(2)}` : '—'}</div> : (
-                                <input type="number" min="0" step="0.01" className="form-control text-right" placeholder="0.00" value={item.unit_value} onChange={e => handleItemChange(idx, 'unit_value', e.target.value)} />
-                              )}
-                            </label>
-                            <div className="manifest-field-group manifest-fragile-field">
-                              <span>Handling</span>
-                              {isFinalized ? (
-                                <div className="manifest-readonly-value">{item.fragile ? <span className="tag-fragile">FRAGILE</span> : 'Standard'}</div>
-                              ) : (
-                                <label className="manifest-fragile-control">
-                                  <input type="checkbox" checked={item.fragile} onChange={e => handleItemChange(idx, 'fragile', e.target.checked)} className="fragile-checkbox" />
-                                  <span>Fragile item</span>
-                                </label>
-                              )}
-                            </div>
-                          </div>
-                          <label className="manifest-field-group manifest-description-field">
-                            <span>Product description &amp; identifying details *</span>
-                            {isFinalized ? <div className="field-readonly-box manifest-description-readonly">{item.description}</div> : (
-                              <textarea className="form-control manifest-description-input" rows={3} value={item.description} placeholder="Product name and the distinguishing details used during packing verification…" onChange={e => handleItemChange(idx, 'description', e.target.value)} />
-                            )}
-                          </label>
-                        </article>
-                      ))}
-                    </div>
-
-                    {!isFinalized && (
-                      <div className="add-row-action">
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          onClick={handleAddItem}
-                        >
-                          + Add Item Row
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Manifest Notes */}
-                    <div className="form-group" style={{ marginTop: '20px' }}>
-                      <label htmlFor="manifest-notes">Packing / Dispatch Notes (Optional)</label>
-                      {isFinalized ? (
-                        <div className="field-readonly-box">{draftNotes || 'No notes provided.'}</div>
-                      ) : (
-                        <textarea
-                          id="manifest-notes"
-                          className="form-control"
-                          rows="2"
-                          placeholder="e.g. Dual-wall cardboard box, tamper-evident tape applied, fragile markings on exterior."
-                          value={draftNotes}
-                          onChange={e => setDraftNotes(e.target.value)}
-                        />
-                      )}
-                    </div>
-
-                    {/* Manifest Action Bar */}
-                    <div className="manifest-actions-bar">
-                      <div className="manifest-actions-info">
-                        {isFinalized ? (
-                          <span className="text-muted">
-                            Manifest finalized on {new Date(manifest.updated_at).toLocaleString()}. Items cannot be modified.
-                          </span>
-                        ) : (
-                          <span className="text-muted">
-                            Save changes as a draft, or finalize to compute SHA-256 fingerprint for packing station.
-                          </span>
-                        )}
-                      </div>
-                      <div className="manifest-actions-buttons">
-                        {!isFinalized ? (
-                          <>
-                            <button
-                              type="button"
-                              className="btn-secondary"
-                              onClick={handleSaveManifest}
-                              disabled={saveLoading || finalizeLoading}
-                            >
-                              {saveLoading ? 'Saving Draft…' : 'Save Draft'}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-primary"
-                              onClick={handleFinalizeManifest}
-                              disabled={saveLoading || finalizeLoading || !manifest}
-                              title={!manifest ? 'Please save as draft first' : 'Finalize and generate SHA-256 fingerprint'}
-                            >
-                              {finalizeLoading ? 'Finalizing…' : 'Finalize & Fingerprint'}
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn-primary"
-                            onClick={() => navigateTo('/packing', { shipmentId: selectedShipment.order_id })}
-                          >
-                            Proceed to Packing Station →
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="checkout-state-box" style={{ padding: '60px' }}>
-              <p>No shipments available.</p>
-            </div>
-          )}
+      {!selectedShipment ? (
+        <section className="order-confirmation-empty">
+          <h1>No paid order selected</h1>
+          <p>Open a paid PayPal order to confirm its items.</p>
+          <button className="btn-primary" onClick={() => navigateTo('/')}>Back to orders</button>
         </section>
-      </div>
+      ) : (
+        <>
+          <section className="workspace-page-intro" aria-labelledby="confirm-order-title">
+            <div className="workspace-page-intro-copy">
+              <div className="eyebrow">PAYPAL ORDER</div>
+              <h1 id="confirm-order-title">Are these the right items?</h1>
+              <p>Check the item names and quantities before packing.</p>
+            </div>
+          </section>
+
+          <section className="order-confirmation-card" aria-label="Paid order items">
+            <div className="order-confirmation-header">
+              <div>
+                <span className="eyebrow">PAID ORDER</span>
+                <h2>{selectedShipment.order_id}</h2>
+                <p>{selectedShipment.buyer_name || 'PayPal customer'} · {selectedShipment.amount ? `$${Number(selectedShipment.amount).toFixed(2)} ${selectedShipment.currency || 'USD'}` : 'Paid'}</p>
+              </div>
+              <span className={`pill ${manifest?.status === 'FINALIZED' ? 'pill-pass' : 'pill-warn'}`}>
+                {manifest?.status === 'FINALIZED' ? 'Items confirmed' : 'Payment received'}
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="order-confirmation-state" role="status">Loading order items…</div>
+            ) : error ? (
+              <div className="findings-box issues" role="alert">{error}</div>
+            ) : manifest?.items?.length ? (
+              <>
+                <div className="order-confirmation-items">
+                  {manifest.items.map((item, index) => (
+                    <article className="order-confirmation-item" key={item.id || item.sku || index}>
+                      <div className="order-confirmation-item-number">{index + 1}</div>
+                      <div className="order-confirmation-item-copy">
+                        <strong>{item.description || item.sku || 'Order item'}</strong>
+                        <span>Quantity: {item.expected_qty}</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="order-confirmation-actions">
+                  <p>{manifest.status === 'FINALIZED'
+                    ? 'These items have already been confirmed.'
+                    : 'ParcelProof will keep this paid item list with the packing photos and review.'}</p>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={confirmItemsAndContinue}
+                    disabled={confirming || loading}
+                  >
+                    {confirming
+                      ? 'Confirming…'
+                      : manifest.status === 'FINALIZED'
+                        ? 'Continue to packing'
+                        : 'Items look right — continue'}
+                    {!confirming && <ArrowIcon />}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="order-confirmation-state" role="alert">
+                This paid order has no item list to confirm. Return to Orders and reopen it.
+              </div>
+            )}
+
+            {manifest?.manifest_hash && (
+              <details className="order-record-details">
+                <summary>View order record</summary>
+                <code>{manifest.manifest_hash}</code>
+              </details>
+            )}
+          </section>
+        </>
+      )}
     </main>
   )
 }
 
-
-// ─── Payment-to-export document reconciliation ───────────────────────────────
+// ─── Payment-to-export document reconciliation ─────────────────────────────── ───────────────────────────────
 function emptyExportDocument(documentType) {
   return {
     document_type: documentType,

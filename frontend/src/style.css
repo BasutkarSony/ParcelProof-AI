@@ -5162,3 +5162,176 @@ textarea {
     width: 100%;
   }
 }
+
+
+/* ─── One-action paid-order confirmation ────────────────────────────────────── */
+.order-confirmation-page .workspace-page-intro {
+  margin-top: 30px;
+  margin-bottom: 18px;
+}
+
+.order-confirmation-card {
+  max-width: 850px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.order-confirmation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.order-confirmation-header .eyebrow {
+  margin-bottom: 4px;
+}
+
+.order-confirmation-header h2 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.order-confirmation-header p {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.order-confirmation-items {
+  display: grid;
+}
+
+.order-confirmation-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.order-confirmation-item-number {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--bg-surface-subtle);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.order-confirmation-item-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.order-confirmation-item-copy strong {
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.order-confirmation-item-copy span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.order-confirmation-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 24px;
+  background: var(--bg-surface-subtle);
+}
+
+.order-confirmation-actions p {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.order-confirmation-actions .btn-primary {
+  min-height: 42px;
+  flex: 0 0 auto;
+}
+
+.order-record-details {
+  margin: 0 24px 18px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.order-record-details summary {
+  padding: 12px 0 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.order-record-details code {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--bg-surface-subtle);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.order-confirmation-state,
+.order-confirmation-empty {
+  max-width: 850px;
+  padding: 28px 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.order-confirmation-empty {
+  margin-top: 32px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--bg-surface);
+}
+
+.order-confirmation-empty h1 {
+  color: var(--navy);
+  font-size: 24px;
+}
+
+.order-confirmation-empty p {
+  margin: 6px 0 16px;
+}
+
+@media (max-width: 680px) {
+  .order-confirmation-header,
+  .order-confirmation-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .order-confirmation-item {
+    padding: 14px 16px;
+  }
+
+  .order-confirmation-header,
+  .order-confirmation-actions {
+    padding: 17px 16px;
+  }
+
+  .order-record-details {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+}
