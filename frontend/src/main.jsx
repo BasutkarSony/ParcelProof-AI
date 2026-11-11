@@ -3235,7 +3235,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   )
 }
 
-function EvidenceTimeline({ shipment, manifest, inspection }) {
+function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] }) {
   const reviews = inspection?.review_history || []
   const latestReview = reviews[reviews.length - 1]
   const photos = inspection?.photos || []
@@ -3249,6 +3249,7 @@ function EvidenceTimeline({ shipment, manifest, inspection }) {
     { title: aiCompleted ? 'AI check recorded' : 'AI check did not complete', description: aiCompleted ? `Observations saved from ${inspection?.model_used || 'the configured vision model'}.` : 'The uploaded evidence remains recorded; an AI result is not available.', complete: aiCompleted },
     { title: latestReview ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}` : 'Merchant decision pending', description: latestReview ? (latestReview.notes || 'The merchant recorded a decision for this inspection.') : 'The merchant still needs to review the original photo and AI observations.', complete: Boolean(latestReview) }
   ]
+  const runsInTimeOrder = [...inspectionRuns].reverse()
   return (
     <section className="evidence-timeline-card" aria-label="Evidence timeline">
       <div className="evidence-timeline-heading">
@@ -3263,6 +3264,33 @@ function EvidenceTimeline({ shipment, manifest, inspection }) {
           </li>
         ))}
       </ol>
+      {runsInTimeOrder.length > 0 && (
+        <div className="evidence-run-history">
+          <div className="evidence-run-history-heading">
+            <strong>Inspection history</strong>
+            <span>{runsInTimeOrder.length} saved attempt{runsInTimeOrder.length === 1 ? '' : 's'}</span>
+          </div>
+          <ol>
+            {runsInTimeOrder.map((run, index) => (
+              <li key={run.inspection_id || run.id}>
+                <span className="evidence-run-number">{index + 1}</span>
+                <div className="evidence-run-copy">
+                  <strong>{String(run.inspection_status || 'UNKNOWN').replaceAll('_', ' ')}</strong>
+                  <p>{run.model_used || 'AI result unavailable'} · {run.photo_count || 0} photo{run.photo_count === 1 ? '' : 's'}</p>
+                  <small>{run.created_at ? new Date(run.created_at).toLocaleString() : 'Time not recorded'}</small>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {latestReview && (
+        <div className="evidence-latest-decision">
+          <strong>Latest merchant note</strong>
+          <p>{latestReview.notes || 'No additional note was recorded.'}</p>
+          <small>{latestReview.reviewer_label || 'Merchant'}{latestReview.created_at ? ` · ${new Date(latestReview.created_at).toLocaleString()}` : ''}</small>
+        </div>
+      )}
       <p className="evidence-timeline-disclaimer">This timeline links saved application records. It is not a blockchain and does not prove the contents of a sealed parcel.</p>
     </section>
   )
@@ -3524,7 +3552,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
               ) : (
                 <div className="inspections-view-content">
                   {inspectionDetail && (
-                    <EvidenceTimeline shipment={selectedShipment} manifest={manifest} inspection={inspectionDetail} />
+                    <EvidenceTimeline shipment={selectedShipment} manifest={manifest} inspection={inspectionDetail} inspectionRuns={inspectionsList} />
                   )}
 
                   {/* Human Review Banner - Prominent & Mandatory Safeguard */}
