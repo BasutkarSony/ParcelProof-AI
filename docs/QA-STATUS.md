@@ -1,153 +1,128 @@
-# QA Status — 6 November 2026
+# QA status — 11 November 2026
 
-## Canonical project and repository
+This is a snapshot of the hosted hackathon demo and the latest verified application behavior. It is not a production-readiness declaration.
 
-The active PayPal AI Hackathon project is **ParcelProof AI**:
+## Canonical project
 
 - Repository: https://github.com/BasutkarSony/ParcelProof-AI
-- Branch: `main`
-- GitHub license detection: MIT
-- Current repository creation date: 4 November 2026.
+- Branch: main
+- License: MIT (LICENSE is present).
 - Hosted demo: https://parcelproof-ai-058h.onrender.com
+- Hosting: Render Free web service, Singapore.
+- Database and evidence storage: Supabase Postgres and private Storage.
 
-The older public [ShipProof-AI repository](https://github.com/BasutkarSony/ShipProof-AI) is a historical snapshot created on 30 October 2026. The live Render service and current CI are connected to **ParcelProof-AI**. Use ParcelProof-AI as the repository link in the Devpost submission. The old repository remains public and was not modified by this workflow.
+The older ShipProof-AI repository is a historical project snapshot. ParcelProof-AI is the repository connected to the live Render service and current CI.
 
-Both repository creation dates fall after the Hackathon Submission Period began on 1 October 2026, based on the official rules supplied for this project.
+## Latest verified application revision
 
-## Latest verified build
-
-Latest green workflow: [GitHub Actions run 42242821982](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/42242821982)
-
-Current `main` head: `96d659826fc9ab9270c5faf99c02e7cc5ab5b2ad` (demo script and product-positioning documentation). The latest application behavior changes are in `635282cde69cebcc929f72390ed970e005d80ea9`, which is included in this head.
+- Application commit: 1840a1b763870e3443c701503d455238d9f55e9e.
+- GitHub Actions run: [43075205082](https://github.com/BasutkarSony/ParcelProof-AI/actions/runs/43075205082).
+- CI result: success.
 
 | Check | Result |
 |---|---|
-| Backend unit suite | **238 tests discovered; 235 passed and 3 PostgreSQL-only tests skipped in this job** |
-| PostgreSQL persistence integration | **3 passed** against temporary PostgreSQL 17 |
-| Frontend tests | **Passed** |
-| Oxlint | **Passed** |
-| Vite production build | **Passed** |
-| Docker image build | **Passed** |
+| Backend unit tests | Passed |
+| PostgreSQL persistence integration | Passed |
+| Frontend tests, lint and production build | Passed |
+| Docker image build | Passed |
 
-The three PostgreSQL-only tests are run separately in the PostgreSQL integration job. The test suite covers checkout-to-shipment/manifest/inspection/review persistence, duplicate shipment retry handling, concurrent manifest finalization, photo preservation after AI failure, and Gemini rate/quota error handling.
+## Hosted deployment and access
 
-These are automated repository tests. They do not replace live testing of Google AI, Supabase Storage, carrier events or PayPal tracking writes.
+- Render deployment: dep-dbqavhaf0oos73f2fcp0, status LIVE.
+- Render health check: /health returned HTTP 200.
+- App root: GET / returned HTTP 200 after the Basic Auth gate was disabled.
+- PARCELPROOF_DEMO_AUTH_REQUIRED=false.
+- The hosted demo opens directly into the application. There is no browser Basic Auth prompt or individual app login.
 
-## Hosted Render service
+The demo is public and uses synthetic data. It does not provide individual merchant accounts or tenant separation. Do not enter real customer, address or payment information.
 
-- Service: [parcelproof-ai-058h](https://dashboard.render.com/web/srv-dbmpto5g1s2s73bjbtgg)
-- URL: https://parcelproof-ai-058h.onrender.com
-- Plan: Free web service, Docker runtime, Singapore region.
-- Current deployed commit: `96d659826fc9ab9270c5faf99c02e7cc5ab5b2ad`.
-- Current deployment: `dep-dbmv2umc6qcc73bkbpug`, status **LIVE**.
-- Render application logs show `GET /health` HTTP 200 after this deployment.
-- The public app root returned HTTP 401, which is expected because the demo is protected by shared HTTP Basic Authentication.
-- Render deploys from `main` after repository checks pass.
+The service is on Render Free. It can sleep after inactivity and may need time to wake on the next visit.
 
-The latest deployment is on the same existing Render service; no new hosting service or repository was created.
+## Current hosted AI configuration
 
-## Supabase live data snapshot
+- Provider: Gemini.
+- Model observed on the latest successful run: gemini-3.5-flash-lite.
+- Per-attempt timeout configured: 30 seconds.
+- One bounded retry for retryable temporary provider errors.
+- Groq is not used by the hosted demo.
+- No OpenAI fallback is configured.
 
-Project: `ParcelProof`, region Seoul, PostgreSQL 17, status `ACTIVE_HEALTHY`.
+The latest successful inspection screen showed one photo evaluated and 9.1 seconds of server processing (photo storage 1.1s, catalogue reference load 0.8s, vision model 7.2s). This is one observed run, not an SLA or average.
 
-Latest direct row-count query:
+## Supabase snapshot
+
+Direct row-count query on 11 November 2026:
 
 | Table | Rows |
 |---|---:|
-| orders | 1 |
-| shipments | 1 |
-| shipment_manifests | 1 |
-| packing_inspections | 0 |
-| inspection_photos | 0 |
-| inspection_reviews | 0 |
+| orders | 2 |
+| shipments | 2 |
+| shipment_manifests | 2 |
+| packing_inspections | 7 |
+| inspection_photos | 10 |
+| inspection_reviews | 3 |
 
-The hosted PayPal Sandbox checkout created one paid order, one linked shipment and one finalized manifest derived from the purchased item lines. The manifest fingerprint is stored. The shipment remains on hold because no packing inspection or human decision has been completed.
+These are demonstration records. The inspection count includes earlier failed attempts; it does not mean all seven AI calls succeeded.
 
-Public repository working-tree hygiene check on the current `main` tree:
-- No committed `.env` files except the intended `backend/.env.example`.
-- No database files, local upload directories, `node_modules`, compiled frontend `dist`, Python bytecode or `__pycache__` paths were found in the current tree.
-- `.gitignore` and `.dockerignore` exclude local secrets, database files, build outputs and local inspection photos.
-- A full commit-history secret scan has not been completed; that remains an open release check.
+## Verified PayPal-to-review path
 
-Previously inspected security and storage setup:
-- All nine ParcelProof application tables exist and have RLS enabled.
-- Direct `anon` and `authenticated` browser-role access is denied.
-- The `inspection-photos` bucket is private, with a 10 MB limit and JPEG, PNG and WebP restrictions.
-- Backend database and storage credentials are not intended for browser use.
+- A PayPal Sandbox payment was approved and captured.
+- The backend verified the PayPal order/capture, amount and currency.
+- The paid order generated a linked shipment and order-derived manifest.
+- The manifest was finalized and its SHA-256 fingerprint was saved.
+- Packing photo evidence was saved with SHA-256 metadata.
+- A Gemini 3.5 Flash Lite inspection completed and was stored.
+- The merchant recorded a separate NEEDS_CORRECTION decision.
+- The shipment remained on hold.
 
-The database snapshot above has zero inspection/photo/review rows. Therefore the hosted photo upload, AI inspection and human-review workflow has **not yet passed a real hosted end-to-end test**.
+Latest inspection:
+- ID: d25a02c1-7468-49c0-9a52-47bd4c2f7e2b.
+- Model: gemini-3.5-flash-lite.
+- Photo count: 1.
+- AI result: MATCH for the visible mug and quantity.
+- Human decision: NEEDS_CORRECTION because the exact catalogue design/variant was not verified.
 
-## PayPal Sandbox verification
+This is an important limitation as well as a useful demonstration: the AI identified a mug and quantity but did not reliably resolve the design difference. The merchant's visual review prevented the AI result from becoming an automatic approval.
 
-Verified through the hosted app:
-- PayPal OAuth authentication succeeded and the tracking write gate showed **Locked**.
-- A buyer-approved PayPal Sandbox checkout was captured and persisted as PAID.
-- The local order, PayPal order ID, nested capture ID, captured amount/currency and item line were checked in Supabase.
-- Exactly one linked shipment and one order-derived finalized manifest were persisted.
+Earlier AI provider failures remain in the inspection history as non-approvable attempts; their photo records were retained.
 
-Not verified:
-- A PayPal Orders v2 tracking write. `PAYPAL_TRACKING_SUBMISSION_ENABLED=false` remains the intended hosted setting.
-- Production PayPal payments or live tracking.
-- Seller Protection eligibility. PayPal makes that decision; ParcelProof does not.
+## Product catalogue
 
-The Orders v2 tracking implementation uses the order ID in `/v2/checkout/orders/{id}/track` and the stored capture ID. PayPal's current documentation requires the order to be captured and in a supported state before tracking can be assigned. No tracking write has been made in this project.
+The live catalogue has three demonstration products. The buyer-facing shop description is now stored separately from the private product-verification description. All three records have a saved reference image. The checkout API returns buyer-safe product copy; the merchant product setup uses the separate identity-profile endpoint.
 
-## AI packing inspection and evidence retention
+## PayPal and logistics limitations
 
-Configured model: `gemini-3.8-flash`. Google's current model-specific page lists this as a stable model and documents image input and structured outputs.
+- PayPal integration is Sandbox, not production.
+- PayPal tracking writes remain disabled: PAYPAL_TRACKING_SUBMISSION_ENABLED=false.
+- No carrier event feed is connected.
+- Merchant-entered tracking information is not independent proof of dispatch or delivery.
+- ParcelProof does not calculate or guarantee PayPal Seller Protection eligibility.
 
-Implemented and CI-tested:
-- Gemini is the primary vision provider.
-- HTTP 503 transient service failures receive one bounded server-side retry.
-- HTTP 429 rate/quota failures are not immediately retried. The API returns 429 and tells the operator to retry after the relevant limit resets.
-- The UI provides separate retry wording for 503 recovery and 429 rate/quota recovery.
-- Other errors such as invalid model, permissions or invalid request do not show a transient retry button.
-- If Gemini fails, the backend stores a non-approvable `AI_FAILED` inspection attempt with manifest fingerprint, photo hashes and photo references when the database write succeeds.
-- Uploaded photo evidence is not deleted merely because the AI provider fails.
-- An `AI_FAILED` inspection cannot receive human approval and cannot satisfy the PayPal tracking gate.
-- The optional OpenAI Vision fallback can be used when `OPENAI_API_KEY` is configured. It is not configured in the current hosted service.
-- The frontend safely handles empty or non-JSON error responses.
+## Hackathon submission status
 
-Not yet verified against the live hosted environment:
-- A successful Gemini inspection using photographs of the physical item in the hosted manifest.
-- Upload and read-back of those photos using the private Supabase Storage bucket.
-- A live hosted provider failure that creates a retrievable `AI_FAILED` database row and retained Storage objects.
-- Re-loading inspection records and photos after a page reload/redeploy.
-- A real human-review decision stored separately from AI observations.
+The official rules require a working application, a public repository with an open-source licence, a text description, tools disclosure, a working demo URL or complete run instructions, and a public YouTube video under three minutes.
 
-Google API error guidance distinguishes HTTP 503 temporary service unavailability from HTTP 429 rate/quota limits. The project now treats those differently.
+| Deliverable | Status |
+|---|---|
+| Public GitHub repository | Available |
+| MIT licence | Present |
+| Hosted demo URL | Available; direct app access |
+| PayPal Sandbox integration | Demonstrated |
+| Gemini inspection | Demonstrated |
+| Separate human correction decision | Demonstrated |
+| Current README and judge instructions | Updated in this submission-preparation pass |
+| Devpost text fields | Draft prepared in docs/DEVPOST-SUBMISSION.md |
+| YouTube video under 3 minutes | Not yet recorded/uploaded |
+| Final Devpost submission receipt | Must be checked by the entrant |
 
-## Shipment-record checks and PayPal policy wording
+## Remaining honest limitations
 
-The deterministic analyzer now reports operational shipment-record completeness only. The old Seller Protection “eligibility/readiness” labels and hard-coded USD 750 signature rule were removed.
+1. The latest correction request is recorded, but a corrected replacement photo and subsequent re-inspection have not yet been demonstrated.
+2. The AI can miss product design/variant differences; human review is essential.
+3. There is no carrier event integration.
+4. PayPal tracking writes are disabled.
+5. The app has no individual merchant accounts or role-based access.
+6. No measured reduction in packing errors, returns or support cost has been collected.
+7. A complete public-repository secret-history scan has not been independently recorded in this snapshot.
 
-The UI distinguishes merchant-entered fields/notes from carrier-verified events. The prototype does **not** connect to carrier event feeds. A tracking number typed by a merchant, a manually entered DELIVERED status or an address-text match is not independent proof of shipment or delivery.
-
-PayPal's India Seller Protection terms require valid proof of shipment or delivery and state that PayPal determines eligibility at its sole discretion. ParcelProof does not calculate or guarantee protection eligibility.
-
-## Hackathon submission checklist
-
-The official rules supplied for the project require:
-- Central PayPal developer-platform integration (Sandbox is allowed) and an AI tool/model.
-- A real runnable application, not a static mockup.
-- A public code repository with an open-source licence.
-- A working demo URL or complete setup/run instructions and judge access details.
-- A YouTube demonstration video under three minutes.
-- Testing access free of charge during the judging period.
-
-The current demo script is 2:45. The video has not yet been recorded or uploaded. The Devpost project overview and access fields were not independently verified because the provided manage/submission page could not be fetched without the authenticated Devpost session.
-
-## Remaining release gaps
-
-1. Complete one real hosted packing-photo upload and successful Gemini inspection using the physical item in the finalized manifest.
-2. Verify that original photos can be retrieved after reload from private Supabase Storage.
-3. Complete one hosted human-review decision and verify persistence/retrieval.
-4. Decide the intended product boundary for the demo: the current verified workflow stops at packing review. Carrier event integration is not implemented.
-5. Keep PayPal tracking writes disabled for the ordinary demo. Only test a Sandbox write after explicit approval of the exact order, capture, carrier and tracking number.
-6. Confirm the Devpost project uses the current ParcelProof-AI repository and hosted URL, then add the judge access instructions.
-7. Record and upload the actual working demonstration video to YouTube and link it in Devpost.
-8. Perform a final public repository secret/data audit.
-
-## Release decision
-
-**Not release-ready yet.** The latest code is green in CI and deployed LIVE on Render. A real PayPal Sandbox payment, persisted shipment and finalized order-derived manifest are verified. The most important remaining task is a successful live hosted packing-photo inspection followed by a human-review decision. Carrier events, PayPal tracking writes, the demo recording and the final Devpost checks remain open.
+**Release position:** suitable to present as a working hackathon prototype with the above limitations disclosed. Not production-ready.
