@@ -1,25 +1,31 @@
-"""Tests for the optional shared password protecting the public demo."""
-import base64
+"""Tests for in-app demo sign-in and the signed browser session."""
 import os
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import Response
-from app.main import _valid_demo_authorization, protect_public_demo
+
+from app.main import (
+    app,
+    DEMO_SESSION_TTL_SECONDS,
+    _create_demo_session_token,
+    _valid_demo_session,
+    protect_public_demo,
+)
 
 
 class DemoAccessTests(unittest.TestCase):
-    def _header(self, username: str, password: str) -> str:
-        token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
-        return f"Basic {token}"
-
-
-    def _request(self, path="/", headers=None):
+    def _request(self, path="/api/orders", headers=None, cookies=None):
+        request_headers = dict(headers or {})
+        if cookies:
+            request_headers["cookie"] = "; ".join(f"{key}={value}" for key, value in cookies.items())
         return Request({
             "type": "http",
             "asgi": {"version": "3.0"},
@@ -29,125 +35,91 @@ class DemoAccessTests(unittest.TestCase):
             "path": path,
             "raw_path": path.encode("utf-8"),
             "query_string": b"",
-            "headers": [
-                (key.lower().encode("ascii"), value.encode("latin-1"))
-                for key, value in (headers or {}).items()
-            ],
+            "headers": [(key.lower().encode("ascii"), value.encode("latin-1")) for key, value in request_headers.items()],
             "client": ("127.0.0.1", 12345),
             "server": ("parcelproof.test", 443),
         })
 
-    def test_protected_demo_rejects_unauthenticated_page_requests(self):
-        async def call_next(_request):
-            return Response("unexpected")
-
-        with patch.dict(os.environ, {
-            "PARCELPROOF_DEMO_AUTH_REQUIRED": "true",
-            "PARCELPROOF_DEMO_USERNAME": "judge",
-            "PARCELPROOF_DEMO_PASSWORD": "long-demo-secret",
-        }):
-            response = __import__("asyncio").run(
-                protect_public_demo(self._request("/"), call_next)
-            )
-
-        self.assertEqual(response.status_code, 401)
-        self.assertIn("Basic", response.headers.get("www-authenticate", ""))
-
-    def test_protected_demo_allows_valid_credentials(self):
+    def test_private_api_requires_session_but_login_page_remains_public(self):
         async def call_next(_request):
             return Response("ok", status_code=200)
-
-        header = self._header("judge", "long-demo-secret")
         with patch.dict(os.environ, {
             "PARCELPROOF_DEMO_AUTH_REQUIRED": "true",
-            "PARCELPROOF_DEMO_USERNAME": "judge",
-            "PARCELPROOF_DEMO_PASSWORD": "long-demo-secret",
+            "PARCELPROOF_DEMO_USERNAME": "merchant.demo",
+            "PARCELPROOF_DEMO_PASSWORD": "PackSafe#2026",
+            "PARCELPROOF_DEMO_SESSION_SECRET": "test-session-secret",
         }):
-            response = __import__("asyncio").run(
-                protect_public_demo(self._request("/", {"Authorization": header}), call_next)
-            )
+            api_response = __import__("asyncio").run(protect_public_demo(self._request("/api/orders"), call_next))
+            root_response = __import__("asyncio").run(protect_public_demo(self._request("/"), call_next))
+        self.assertEqual(api_response.status_code, 401)
+        self.assertNotIn("www-authenticate", api_response.headers)
+        self.assertEqual(root_response.status_code, 200)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.headers.get("x-frame-options"), "DENY")
-
-    def test_protected_demo_fails_closed_when_secrets_are_missing(self):
-        async def call_next(_request):
-            return Response("unexpected")
-
-        with patch.dict(os.environ, {
-            "PARCELPROOF_DEMO_AUTH_REQUIRED": "true",
-            "PARCELPROOF_DEMO_USERNAME": "",
-            "PARCELPROOF_DEMO_PASSWORD": "",
-        }):
-            response = __import__("asyncio").run(
-                protect_public_demo(self._request("/"), call_next)
-            )
-
-        self.assertEqual(response.status_code, 503)
-
-    def test_render_health_check_is_public_even_when_demo_auth_is_required(self):
+    def test_health_endpoint_remains_public(self):
         async def call_next(_request):
             return Response("healthy", status_code=200)
-
         with patch.dict(os.environ, {
             "PARCELPROOF_DEMO_AUTH_REQUIRED": "true",
             "PARCELPROOF_DEMO_USERNAME": "",
             "PARCELPROOF_DEMO_PASSWORD": "",
         }):
-            response = __import__("asyncio").run(
-                protect_public_demo(self._request("/health"), call_next)
-            )
-
+            response = __import__("asyncio").run(protect_public_demo(self._request("/health"), call_next))
         self.assertEqual(response.status_code, 200)
 
-    def test_accepts_matching_shared_demo_credentials(self):
+    def test_signed_session_expires_and_rejects_tampering(self):
         with patch.dict(os.environ, {
-            "PARCELPROOF_DEMO_USERNAME": "judge",
-            "PARCELPROOF_DEMO_PASSWORD": "long-demo-secret",
+            "PARCELPROOF_DEMO_AUTH_REQUIRED": "true",
+            "PARCELPROOF_DEMO_USERNAME": "merchant.demo",
+            "PARCELPROOF_DEMO_PASSWORD": "PackSafe#2026",
+            "PARCELPROOF_DEMO_SESSION_SECRET": "test-session-secret",
         }):
-            self.assertTrue(
-                _valid_demo_authorization(self._header("judge", "long-demo-secret"))
-            )
+            issued = int(time.time())
+            token = _create_demo_session_token(issued)
+            self.assertTrue(_valid_demo_session(token, issued + 60))
+            self.assertFalse(_valid_demo_session(token, issued + DEMO_SESSION_TTL_SECONDS + 1))
+            self.assertFalse(_valid_demo_session(token + "tampered", issued + 60))
+            self.assertFalse(_valid_demo_session("not-a-session"))
 
-    def test_rejects_wrong_password(self):
+    def test_login_sets_http_only_cookie_and_logout_clears_it(self):
         with patch.dict(os.environ, {
-            "PARCELPROOF_DEMO_USERNAME": "judge",
-            "PARCELPROOF_DEMO_PASSWORD": "long-demo-secret",
+            "PARCELPROOF_DEMO_AUTH_REQUIRED": "true",
+            "PARCELPROOF_DEMO_USERNAME": "merchant.demo",
+            "PARCELPROOF_DEMO_PASSWORD": "PackSafe#2026",
+            "PARCELPROOF_DEMO_SESSION_SECRET": "test-session-secret",
         }):
-            self.assertFalse(
-                _valid_demo_authorization(self._header("judge", "wrong-secret"))
-            )
+            client = TestClient(app)
+            login = client.post("/api/auth/login", json={"username": "merchant.demo", "password": "PackSafe#2026"})
+            self.assertEqual(login.status_code, 200)
+            self.assertTrue(login.cookies.get("parcelproof_demo_session"))
+            self.assertIn("httponly", login.headers.get("set-cookie", "").lower())
+            self.assertEqual(client.get("/api/orders").status_code, 200)
+            logout = client.post("/api/auth/logout")
+            self.assertEqual(logout.status_code, 200)
+            self.assertEqual(client.get("/api/orders").status_code, 401)
 
-    def test_rejects_wrong_username(self):
+    def test_wrong_password_is_rejected(self):
         with patch.dict(os.environ, {
-            "PARCELPROOF_DEMO_USERNAME": "judge",
-            "PARCELPROOF_DEMO_PASSWORD": "long-demo-secret",
+            "PARCELPROOF_DEMO_AUTH_REQUIRED": "true",
+            "PARCELPROOF_DEMO_USERNAME": "merchant.demo",
+            "PARCELPROOF_DEMO_PASSWORD": "PackSafe#2026",
+            "PARCELPROOF_DEMO_SESSION_SECRET": "test-session-secret",
         }):
-            self.assertFalse(
-                _valid_demo_authorization(self._header("someone-else", "long-demo-secret"))
-            )
+            response = TestClient(app).post("/api/auth/login", json={"username": "merchant.demo", "password": "wrong"})
+        self.assertEqual(response.status_code, 401)
+        self.assertNotIn("parcelproof_demo_session", response.cookies)
 
-    def test_rejects_malformed_or_non_basic_authorization(self):
+    def test_missing_credentials_fail_closed(self):
+        async def call_next(_request):
+            return Response("unexpected")
         with patch.dict(os.environ, {
-            "PARCELPROOF_DEMO_USERNAME": "judge",
-            "PARCELPROOF_DEMO_PASSWORD": "long-demo-secret",
-        }):
-            self.assertFalse(_valid_demo_authorization("Bearer not-a-basic-token"))
-            self.assertFalse(_valid_demo_authorization("Basic not-base64"))
-
-    def test_rejects_when_credentials_are_not_configured(self):
-        with patch.dict(os.environ, {
+            "PARCELPROOF_DEMO_AUTH_REQUIRED": "true",
             "PARCELPROOF_DEMO_USERNAME": "",
             "PARCELPROOF_DEMO_PASSWORD": "",
-        }, clear=False):
-            self.assertFalse(_valid_demo_authorization(self._header("judge", "secret")))
-
-    def test_rejects_partial_demo_credential_configuration(self):
-        with patch.dict(os.environ, {
-            "PARCELPROOF_DEMO_USERNAME": "judge",
-            "PARCELPROOF_DEMO_PASSWORD": "",
-        }, clear=False):
-            self.assertFalse(_valid_demo_authorization(self._header("judge", "secret")))
+        }):
+            response = __import__("asyncio").run(protect_public_demo(self._request("/api/orders"), call_next))
+            login = TestClient(app).post("/api/auth/login", json={"username": "merchant.demo", "password": "wrong"})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(login.status_code, 503)
 
 
 if __name__ == "__main__":

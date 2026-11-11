@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import hmac
 import json
@@ -82,57 +81,165 @@ app = FastAPI(
 
 
 
-def _valid_demo_authorization(auth_header: str) -> bool:
-    """Validate shared demo credentials without logging secrets."""
-    username = os.getenv("PARCELPROOF_DEMO_USERNAME", "").strip()
-    password = os.getenv("PARCELPROOF_DEMO_PASSWORD", "")
+DEMO_SESSION_COOKIE = "parcelproof_demo_session"
+DEMO_SESSION_TTL_SECONDS = 12 * 60 * 60
+AUTH_PUBLIC_PATHS = {"/api/auth/status", "/api/auth/login", "/api/auth/logout"}
+
+
+def _demo_auth_required() -> bool:
+    return os.getenv("PARCELPROOF_DEMO_AUTH_REQUIRED", "false").strip().lower() == "true"
+
+
+def _demo_credentials() -> tuple[str, str]:
+    return os.getenv("PARCELPROOF_DEMO_USERNAME", "").strip(), os.getenv("PARCELPROOF_DEMO_PASSWORD", "")
+
+
+def _demo_session_secret() -> bytes:
+    configured = os.getenv("PARCELPROOF_DEMO_SESSION_SECRET", "").strip()
+    if configured:
+        return configured.encode("utf-8")
+    username, password = _demo_credentials()
+    return hashlib.sha256(("parcelproof-demo-session:" + username + ":" + password).encode("utf-8")).digest()
+
+
+def _create_demo_session_token(now: int | None = None) -> str:
+    username, password = _demo_credentials()
     if not username or not password:
-        return False
+        raise ValueError("Demo sign-in is not configured.")
+    issued_at = int(now if now is not None else time.time())
+    message = f"{username}:{issued_at}".encode("utf-8")
+    signature = hmac.new(_demo_session_secret(), message, hashlib.sha256).hexdigest()
+    return f"{issued_at}.{signature}"
 
+
+def _valid_demo_session(token: str | None, now: int | None = None) -> bool:
+    username, password = _demo_credentials()
+    if not username or not password or not token:
+        return False
     try:
-        scheme, token = auth_header.split(None, 1)
-        if scheme.lower() != "basic":
-            return False
-        decoded = base64.b64decode(token, validate=True).decode("utf-8")
-        supplied_username, supplied_password = decoded.split(":", 1)
-    except (ValueError, UnicodeDecodeError):
+        issued_text, supplied_signature = token.split(".", 1)
+        issued_at = int(issued_text)
+    except (ValueError, TypeError):
         return False
+    current_time = int(now if now is not None else time.time())
+    age = current_time - issued_at
+    if age < -60 or age > DEMO_SESSION_TTL_SECONDS:
+        return False
+    message = f"{username}:{issued_at}".encode("utf-8")
+    expected = hmac.new(_demo_session_secret(), message, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(supplied_signature, expected)
 
-    return (
+
+def _request_has_demo_session(request: Request) -> bool:
+    return _valid_demo_session(request.cookies.get(DEMO_SESSION_COOKIE))
+
+
+@app.get("/api/auth/status")
+def demo_auth_status(request: Request):
+    """Tell the frontend whether the shared demo session is required."""
+    enabled = _demo_auth_required()
+    username, password = _demo_credentials()
+    return {
+        "enabled": enabled,
+        "configured": bool(username and password) if enabled else True,
+        "authenticated": (not enabled) or _request_has_demo_session(request),
+        "demo_username": username if enabled and username and password else "",
+    }
+
+
+@app.post("/api/auth/login")
+async def demo_auth_login(request: Request):
+    """Create a signed, HttpOnly browser session for the shared demo account."""
+    if not _demo_auth_required():
+        return {"authenticated": True, "enabled": False}
+    username, password = _demo_credentials()
+    if not username or not password:
+        raise HTTPException(status_code=503, detail="Demo sign-in is not configured. Please contact the demo owner.")
+    try:
+        payload = await request.json()
+        supplied_username = str(payload.get("username", ""))
+        supplied_password = str(payload.get("password", ""))
+    except (ValueError, AttributeError):
+        supplied_username = ""
+        supplied_password = ""
+    valid = (
         hmac.compare_digest(supplied_username.encode("utf-8"), username.encode("utf-8"))
         and hmac.compare_digest(supplied_password.encode("utf-8"), password.encode("utf-8"))
     )
+    if not valid:
+        raise HTTPException(status_code=401, detail="The username or password is incorrect.")
+
+    token = _create_demo_session_token()
+    response = Response(
+        content=json.dumps({"authenticated": True, "enabled": True}),
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"},
+    )
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    secure_cookie = request.url.scheme == "https" or forwarded_proto.split(",")[0].strip() == "https"
+    response.set_cookie(
+        key=DEMO_SESSION_COOKIE,
+        value=token,
+        max_age=DEMO_SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+def demo_auth_logout(request: Request):
+    """Clear the browser's shared demo session."""
+    response = Response(
+        content=json.dumps({"authenticated": False, "enabled": _demo_auth_required()}),
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"},
+    )
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    secure_cookie = request.url.scheme == "https" or forwarded_proto.split(",")[0].strip() == "https"
+    response.delete_cookie(
+        key=DEMO_SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        secure=secure_cookie,
+        samesite="lax",
+    )
+    return response
 
 
 @app.middleware("http")
 async def protect_public_demo(request: Request, call_next):
-    """Apply shared Basic Auth only when the demo-auth flag is explicitly enabled."""
-    required = os.getenv("PARCELPROOF_DEMO_AUTH_REQUIRED", "false").strip().lower() == "true"
-    username = os.getenv("PARCELPROOF_DEMO_USERNAME", "").strip()
-    password = os.getenv("PARCELPROOF_DEMO_PASSWORD", "")
-    enabled = required
+    """Protect API data with a signed session while keeping the login page and health public."""
+    enabled = _demo_auth_required()
+    path = request.url.path
+    is_health_check = request.method == "GET" and path == "/health"
+    is_auth_route = path in AUTH_PUBLIC_PATHS
+    is_preflight = request.method == "OPTIONS"
 
-    # Render health checks must remain public so the platform can monitor the service.
-    is_health_check = request.method == "GET" and request.url.path == "/health"
-    if enabled and not is_health_check:
+    if enabled and not is_health_check and not is_auth_route and not is_preflight:
+        username, password = _demo_credentials()
         if not username or not password:
             return Response(
-                content="Demo access is not configured.",
+                content=json.dumps({"detail": "Demo sign-in is not configured."}),
                 status_code=503,
-                media_type="text/plain",
+                media_type="application/json",
+                headers={"Cache-Control": "no-store"},
             )
-        if not _valid_demo_authorization(request.headers.get("authorization", "")):
+        if path.startswith("/api/") and not _request_has_demo_session(request):
             return Response(
-                content="Authentication required.",
+                content=json.dumps({"detail": "Please sign in to continue."}),
                 status_code=401,
-                media_type="text/plain",
-                headers={"WWW-Authenticate": 'Basic realm="ParcelProof AI demo", charset="UTF-8"'},
+                media_type="application/json",
+                headers={"Cache-Control": "no-store"},
             )
 
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Cache-Control", "no-store")
     return response
 
 
