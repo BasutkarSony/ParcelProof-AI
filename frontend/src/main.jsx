@@ -445,6 +445,505 @@ export function ProductCatalogueView() {
   )
 }
 
+
+const VOICE_COMMANDS = {
+  en: {
+    pending: ["what needs packing", "show pending orders", "read my orders", "what orders are waiting"],
+    packing: ["go to packing", "open packing", "start packing", "packing station", "inspect this order"],
+    list: ["read packing list", "show packing list", "what am i packing", "what is in this order"],
+    inspection: ["go to inspections", "open inspections", "review inspection", "show inspection"],
+    ai: ["what did ai find", "read ai result", "inspection result", "what is the inspection result"],
+    products: ["go to products", "open products", "show products"],
+    orders: ["go to orders", "open orders", "show orders"],
+    next: ["next step", "what is next", "what should i do next"],
+    capture: ["take a photo", "capture photo", "add packing photo"],
+    dictate: ["dictate note", "add a voice note", "speak a note"],
+    help: ["help", "what can i say", "voice commands"]
+  },
+  hi: {
+    pending: ["क्या पैक करना है", "कौन से ऑर्डर बाकी हैं", "बाकी ऑर्डर दिखाओ", "ऑर्डर पढ़ो"],
+    packing: ["पैकिंग पर जाओ", "पैकिंग खोलो", "पैकिंग शुरू करो", "इस ऑर्डर की पैकिंग"],
+    list: ["पैकिंग सूची पढ़ो", "पैकिंग लिस्ट दिखाओ", "इस ऑर्डर में क्या है"],
+    inspection: ["इंस्पेक्शन दिखाओ", "जांच दिखाओ", "इंस्पेक्शन पर जाओ"],
+    ai: ["एआई ने क्या पाया", "एआई का नतीजा बताओ", "जांच का नतीजा"],
+    products: ["प्रोडक्ट दिखाओ", "प्रोडक्ट पर जाओ", "उत्पाद दिखाओ"],
+    orders: ["ऑर्डर पर जाओ", "ऑर्डर दिखाओ"],
+    next: ["अगला कदम क्या है", "अब क्या करना है", "आगे क्या करना है"],
+    capture: ["फोटो लो", "फोटो खींचो", "पैकिंग की फोटो लो"],
+    dictate: ["नोट बोलो", "नोट लिखो", "वॉइस नोट"],
+    help: ["मदद", "क्या बोल सकता हूं", "कमांड बताओ"]
+  },
+  te: {
+    pending: ["ఏమి ప్యాక్ చేయాలి", "పెండింగ్ ఆర్డర్లు చూపించు", "ఏ ఆర్డర్లు మిగిలి ఉన్నాయి", "ఆర్డర్లు చదువు"],
+    packing: ["ప్యాకింగ్‌కు వెళ్ళు", "ప్యాకింగ్ తెరువు", "ప్యాకింగ్ ప్రారంభించు", "ఈ ఆర్డర్ ప్యాక్ చేయి"],
+    list: ["ప్యాకింగ్ జాబితా చదువు", "ప్యాకింగ్ లిస్ట్ చూపించు", "ఈ ఆర్డర్‌లో ఏముంది"],
+    inspection: ["తనిఖీ చూపించు", "ఇన్‌స్పెక్షన్ తెరువు", "ఇన్‌స్పెక్షన్‌కు వెళ్ళు"],
+    ai: ["ఏఐ ఏమి కనుగొంది", "ఏఐ ఫలితం చెప్పు", "తనిఖీ ఫలితం చెప్పు"],
+    products: ["ఉత్పత్తులు చూపించు", "ప్రొడక్ట్స్ తెరువు"],
+    orders: ["ఆర్డర్లకు వెళ్ళు", "ఆర్డర్లు చూపించు"],
+    next: ["తర్వాత ఏమి చేయాలి", "తదుపరి దశ ఏమిటి", "ఇప్పుడు ఏమి చేయాలి"],
+    capture: ["ఫోటో తీయి", "ఫోటో తీసుకో", "ప్యాకింగ్ ఫోటో తీయి"],
+    dictate: ["నోట్ చెప్పు", "నోట్ రికార్డ్ చేయి", "వాయిస్ నోట్"],
+    help: ["సహాయం", "ఏమి చెప్పవచ్చు", "కమాండ్లు చెప్పు"]
+  }
+}
+
+export function parseParcelProofVoiceCommand(input, language = "en-IN") {
+  const text = String(input || "").trim().toLocaleLowerCase()
+  if (!text) return { type: "unknown" }
+
+  const noteMatch = text.match(/^(?:add a note|add note|note|write note)\s*[:,.-]?\s*(.+)$/i)
+  if (noteMatch && noteMatch[1].trim()) return { type: "note", text: noteMatch[1].trim() }
+
+  const orderMatch = text.toUpperCase().match(/\b(SHP-[A-Z0-9-]+|ORD-\d+)\b/)
+  if (orderMatch) return { type: "open-order", orderId: orderMatch[1] }
+
+  const key = language.toLowerCase().startsWith("hi") ? "hi"
+    : language.toLowerCase().startsWith("te") ? "te" : "en"
+  const commands = VOICE_COMMANDS[key]
+  for (const [type, phrases] of Object.entries(commands)) {
+    if (phrases.some(phrase => text.includes(phrase.toLocaleLowerCase()))) return { type }
+  }
+  return { type: "unknown" }
+}
+
+const VOICE_COPY = {
+  "en": {
+    welcome: "Hi. Ask what needs packing, say read packing list, or ask what the AI found.",
+    listening: "Listening. Speak now.",
+    noOrders: "There are no paid orders waiting to be packed.",
+    openingOrders: "Opening orders.",
+    openingProducts: "Opening products.",
+    openingInspection: "Opening inspection review.",
+    noActive: "Choose a paid order first. I can open the first order waiting to be packed.",
+    noManifest: "This order has no packing list yet. Open manifest management to create and finalize one.",
+    noInspections: "There is no AI inspection for this order yet. Add a packing photo and run the inspection from the packing station.",
+    noteReady: "Your note has been added to the review form. Check it before submitting your decision.",
+    noNoteField: "Open the latest inspection and expand the optional note field first. Then dictate your note.",
+    safeDecision: "I have opened the inspection review. For safety, use the visible review button to record approval, correction or rejection.",
+    captureHelp: "Open the packing station and tap the photo area to choose or capture a picture. I cannot open the camera without a direct tap.",
+    help: "You can ask: what needs packing, read packing list, go to packing, what did AI find, go to orders, or show products. On the review screen, use dictate review note to speak a note.",
+    unknown: "I did not understand that command. Say help to hear examples.",
+    error: "Voice input could not start. Check microphone permission and try again."
+  },
+  "hi": {
+    welcome: "नमस्ते। पूछें कि क्या पैक करना है, पैकिंग सूची पढ़ने को कहें, या एआई का परिणाम पूछें।",
+    listening: "सुन रहा हूँ। अब बोलिए।",
+    noOrders: "अभी पैक करने के लिए कोई भुगतान किया हुआ ऑर्डर नहीं है।",
+    openingOrders: "ऑर्डर खोल रहा हूँ।",
+    openingProducts: "प्रोडक्ट खोल रहा हूँ।",
+    openingInspection: "इंस्पेक्शन समीक्षा खोल रहा हूँ।",
+    noActive: "पहले एक भुगतान किया हुआ ऑर्डर चुनें।",
+    noManifest: "इस ऑर्डर की पैकिंग सूची अभी नहीं है। पहले मैनिफेस्ट बनाकर फाइनल करें।",
+    noInspections: "इस ऑर्डर का एआई निरीक्षण अभी नहीं हुआ है। पहले फोटो जोड़कर पैकिंग स्टेशन से जांच शुरू करें।",
+    noteReady: "आपका नोट समीक्षा फ़ॉर्म में जोड़ दिया गया है। निर्णय भेजने से पहले इसे जांच लें।",
+    noNoteField: "पहले नवीनतम निरीक्षण खोलें और नोट फ़ील्ड दिखाएँ। फिर नोट बोलें।",
+    safeDecision: "मैंने निरीक्षण समीक्षा खोल दी है। सुरक्षा के लिए निर्णय दर्ज करने हेतु स्क्रीन पर दिया गया बटन दबाएँ।",
+    captureHelp: "पैकिंग स्टेशन खोलें और फोटो क्षेत्र पर टैप करके फोटो चुनें या लें। कैमरा खोलने के लिए सीधे टैप करना ज़रूरी है।",
+    help: "आप पूछ सकते हैं कि क्या पैक करना है, पैकिंग सूची पढ़ने को कह सकते हैं, पैकिंग खोलने को कह सकते हैं या एआई का परिणाम पूछ सकते हैं।",
+    unknown: "मैं यह निर्देश समझ नहीं पाया। उदाहरण सुनने के लिए मदद कहें।",
+    error: "आवाज़ शुरू नहीं हो सकी। माइक्रोफ़ोन की अनुमति जांचें और फिर कोशिश करें।"
+  },
+  "te": {
+    welcome: "నమస్కారం. ఏమి ప్యాక్ చేయాలో అడగండి, ప్యాకింగ్ జాబితా చదవమని చెప్పండి లేదా ఏఐ ఫలితం అడగండి.",
+    listening: "వింటున్నాను. ఇప్పుడు మాట్లాడండి.",
+    noOrders: "ప్యాక్ చేయడానికి చెల్లించిన ఆర్డర్లు లేవు.",
+    openingOrders: "ఆర్డర్లను తెరుస్తున్నాను.",
+    openingProducts: "ఉత్పత్తులను తెరుస్తున్నాను.",
+    openingInspection: "తనిఖీ సమీక్షను తెరుస్తున్నాను.",
+    noActive: "ముందుగా చెల్లించిన ఆర్డర్‌ను ఎంచుకోండి.",
+    noManifest: "ఈ ఆర్డర్‌కు ప్యాకింగ్ జాబితా లేదు. ముందుగా మానిఫెస్ట్‌ను సృష్టించి ఖరారు చేయండి.",
+    noInspections: "ఈ ఆర్డర్‌కు ఇంకా ఏఐ తనిఖీ లేదు. ముందుగా ఫోటో జోడించి ప్యాకింగ్ స్టేషన్‌లో తనిఖీ చేయండి.",
+    noteReady: "మీ నోట్ సమీక్ష ఫారంలో జోడించబడింది. నిర్ణయం పంపే ముందు దాన్ని తనిఖీ చేయండి.",
+    noNoteField: "ముందుగా తాజా తనిఖీని తెరిచి నోట్ ఫీల్డ్‌ను చూపించండి. తరువాత మాట్లాడండి.",
+    safeDecision: "తనిఖీ సమీక్షను తెరిచాను. భద్రత కోసం నిర్ణయం నమోదు చేయడానికి తెరపై ఉన్న బటన్‌ను నొక్కండి.",
+    captureHelp: "ప్యాకింగ్ స్టేషన్ తెరిచి ఫోటో ప్రాంతాన్ని నొక్కి ఫోటో ఎంచుకోండి లేదా తీయండి. కెమెరా తెరవడానికి నేరుగా నొక్కాలి.",
+    help: "ఏమి ప్యాక్ చేయాలి, ప్యాకింగ్ జాబితా చదువు, ప్యాకింగ్‌కు వెళ్ళు లేదా ఏఐ ఏమి కనుగొందని అడగవచ్చు.",
+    unknown: "ఆ ఆదేశం అర్థం కాలేదు. ఉదాహరణల కోసం సహాయం అడగండి.",
+    error: "వాయిస్ ప్రారంభం కాలేదు. మైక్రోఫోన్ అనుమతిని తనిఖీ చేసి మళ్లీ ప్రయత్నించండి."
+  }
+}
+
+function voiceLocaleKey(language) {
+  return String(language || "en-IN").toLowerCase().startsWith("hi") ? "hi"
+    : String(language || "en-IN").toLowerCase().startsWith("te") ? "te" : "en"
+}
+
+function VoiceAssistant({ orders, activeShipmentId, setActiveShipmentId, navigateTo, currentPath }) {
+  const [open, setOpen] = useState(false)
+  const [language, setLanguage] = useState("en-IN")
+  const [listening, setListening] = useState(false)
+  const [heard, setHeard] = useState("")
+  const [reply, setReply] = useState(VOICE_COPY.en.welcome)
+  const [error, setError] = useState("")
+  const recognitionRef = useRef(null)
+  const copy = VOICE_COPY[voiceLocaleKey(language)]
+
+  const pendingOrders = useMemo(() => (orders || []).filter(order => {
+    if (!order.checkout_order_id) return false
+    return !["SHIPPED", "DELIVERED", "CANCELLED"].includes(String(order.status || "").toUpperCase())
+  }), [orders])
+
+  const selectedOrder = useMemo(() => {
+    return (orders || []).find(order => order.order_id === activeShipmentId)
+      || pendingOrders[0]
+      || (orders || []).find(order => Boolean(order.checkout_order_id))
+      || null
+  }, [orders, activeShipmentId, pendingOrders])
+
+  useEffect(() => () => {
+    try { recognitionRef.current?.stop() } catch { /* recognition may already have stopped */ }
+    if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel()
+  }, [])
+
+  function say(message) {
+    setReply(message)
+    setError("")
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return
+    try {
+      window.speechSynthesis.cancel()
+      const utterance = new window.SpeechSynthesisUtterance(message)
+      utterance.lang = language
+      utterance.rate = 0.96
+      const voices = window.speechSynthesis.getVoices()
+      const exactVoice = voices.find(voice => voice.lang.toLowerCase() === language.toLowerCase())
+      const baseVoice = voices.find(voice => voice.lang.toLowerCase().startsWith(language.slice(0, 2).toLowerCase()))
+      if (exactVoice || baseVoice) utterance.voice = exactVoice || baseVoice
+      window.speechSynthesis.speak(utterance)
+    } catch {
+      // Text response remains available when speech output is unavailable.
+    }
+  }
+
+  async function getJson(path) {
+    const response = await fetch(API_BASE + path)
+    const data = await readApiJson(response)
+    if (!response.ok) throw new Error(data.detail || "Could not load this information.")
+    return data
+  }
+
+  function formatAmount(order) {
+    const amount = Number(order?.amount || 0)
+    return amount > 0 ? amount.toFixed(2) + " " + (order.currency || "USD") : ""
+  }
+
+  async function readPendingOrders() {
+    if (!pendingOrders.length) {
+      say(copy.noOrders)
+      return
+    }
+    const first = pendingOrders[0]
+    const second = pendingOrders[1]
+    let message
+    if (voiceLocaleKey(language) === "hi") {
+      message = "आपके पास पैक करने के लिए " + pendingOrders.length + " भुगतान किए हुए ऑर्डर हैं। पहला ऑर्डर " + first.order_id + " है। इसमें " + (first.buyer_name || "ग्राहक") + " के लिए " + formatAmount(first) + " का सामान है।";
+    } else if (voiceLocaleKey(language) === "te") {
+      message = "మీరు ప్యాక్ చేయాల్సిన చెల్లించిన ఆర్డర్లు " + pendingOrders.length + " ఉన్నాయి. మొదటి ఆర్డర్ " + first.order_id + ". మొత్తం " + formatAmount(first) + ".";
+    } else {
+      message = "You have " + pendingOrders.length + " paid orders waiting to be packed. The first is " + first.order_id + ", for " + (first.buyer_name || "the buyer") + ", total " + formatAmount(first) + ".";
+    }
+    if (second) message += voiceLocaleKey(language) === "hi"
+      ? " अगला ऑर्डर " + second.order_id + " है।"
+      : voiceLocaleKey(language) === "te"
+        ? " తరువాతి ఆర్డర్ " + second.order_id + "."
+        : " The next order is " + second.order_id + "."
+    say(message)
+  }
+
+  async function readPackingList(order = selectedOrder) {
+    if (!order) {
+      say(copy.noActive)
+      return
+    }
+    try {
+      const manifest = await getJson("/api/shipments/" + encodeURIComponent(order.order_id) + "/manifest")
+      const items = Array.isArray(manifest.items) ? manifest.items : []
+      if (!items.length) {
+        say(copy.noManifest)
+        return
+      }
+      const itemText = items.map(item => {
+        const quantity = Number(item.expected_qty || 0)
+        const description = String(item.description || item.sku || "ordered item").split(/[.!?]/)[0].trim()
+        return quantity + " " + description
+      }).join(". ")
+      const statusText = String(manifest.status || "DRAFT").replaceAll("_", " ").toLowerCase()
+      const message = voiceLocaleKey(language) === "hi"
+        ? "ऑर्डर " + order.order_id + " की पैकिंग सूची। " + itemText + "। मैनिफेस्ट की स्थिति " + statusText + " है।"
+        : voiceLocaleKey(language) === "te"
+          ? "ఆర్డర్ " + order.order_id + " ప్యాకింగ్ జాబితా. " + itemText + ". మానిఫెస్ట్ స్థితి " + statusText + "."
+          : "Packing list for " + order.order_id + ". " + itemText + ". The manifest is " + statusText + "."
+      say(message)
+    } catch (err) {
+      if (String(err.message).includes("No manifest")) say(copy.noManifest)
+      else say(err.message || copy.noManifest)
+    }
+  }
+
+  async function readLatestInspection(order = selectedOrder) {
+    if (!order) {
+      say(copy.noActive)
+      return
+    }
+    try {
+      const manifest = await getJson("/api/shipments/" + encodeURIComponent(order.order_id) + "/manifest")
+      const listing = await getJson("/api/manifests/" + encodeURIComponent(manifest.id) + "/inspections")
+      const latest = (listing.inspections || [])[0]
+      if (!latest) {
+        say(copy.noInspections)
+        return
+      }
+      const detail = await getJson("/api/inspections/" + encodeURIComponent(latest.inspection_id))
+      const ai = detail.ai_result || {}
+      const checks = Array.isArray(ai.item_checks) ? ai.item_checks : []
+      const outcomes = checks.map(item => {
+        const result = String(item.result || "UNCERTAIN").replaceAll("_", " ").toLowerCase()
+        const quantity = item.observed_qty === null || item.observed_qty === undefined
+          ? "quantity uncertain"
+          : "observed " + item.observed_qty
+        return (item.description || item.sku || "item") + ": " + result + ", " + quantity
+      }).join(". ")
+      const reviewStatus = String(detail.inspection_status || latest.inspection_status || "UNKNOWN").replaceAll("_", " ").toLowerCase()
+      const summary = String(ai.inspection_summary || "").trim()
+      const message = voiceLocaleKey(language) === "hi"
+        ? "नवीनतम एआई जांच की स्थिति " + reviewStatus + ". " + (outcomes || summary || "अभी कोई अतिरिक्त जानकारी नहीं है।")
+        : voiceLocaleKey(language) === "te"
+          ? "తాజా ఏఐ తనిఖీ స్థితి " + reviewStatus + ". " + (outcomes || summary || "అదనపు వివరాలు లేవు.")
+          : "The latest AI inspection is " + reviewStatus + ". " + (outcomes || summary || "No additional findings were recorded.")
+      say(message)
+    } catch (err) {
+      say(err.message || copy.noInspections)
+    }
+  }
+
+  function insertReviewNote(note) {
+    const field = document.getElementById("review-notes")
+    if (!field) return false
+    const details = field.closest("details")
+    if (details) details.open = true
+    const prefix = field.value && !field.value.endsWith("\n") ? "\n" : ""
+    const nextValue = field.value + prefix + note
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
+    if (setter) setter.call(field, nextValue)
+    else field.value = nextValue
+    field.dispatchEvent(new Event("input", { bubbles: true }))
+    field.focus()
+    return true
+  }
+
+  function openPacking(order = selectedOrder) {
+    if (!order) {
+      say(copy.noActive)
+      return
+    }
+    setActiveShipmentId(order.order_id)
+    navigateTo("/packing", { shipmentId: order.order_id })
+    const message = voiceLocaleKey(language) === "hi"
+      ? order.order_id + " की पैकिंग खोल रहा हूँ।"
+      : voiceLocaleKey(language) === "te"
+        ? order.order_id + " ప్యాకింగ్ తెరుస్తున్నాను."
+        : "Opening the packing station for " + order.order_id + "."
+    say(message)
+  }
+
+  function handleCommand(transcript) {
+    setHeard(transcript)
+    const command = parseParcelProofVoiceCommand(transcript, language)
+    setError("")
+    if (command.type === "note") {
+      if (insertReviewNote(command.text)) say(copy.noteReady)
+      else say(copy.noNoteField)
+      return
+    }
+    if (command.type === "open-order") {
+      const order = (orders || []).find(item => String(item.order_id || "").toUpperCase() === command.orderId)
+      if (order) openPacking(order)
+      else say("I could not find order " + command.orderId + ".")
+      return
+    }
+    if (command.type === "pending") {
+      readPendingOrders()
+      return
+    }
+    if (command.type === "packing") {
+      openPacking()
+      return
+    }
+    if (command.type === "list") {
+      readPackingList()
+      return
+    }
+    if (command.type === "inspection") {
+      if (selectedOrder) {
+        setActiveShipmentId(selectedOrder.order_id)
+        navigateTo("/inspections", { shipmentId: selectedOrder.order_id })
+      } else navigateTo("/inspections")
+      say(copy.openingInspection)
+      return
+    }
+    if (command.type === "ai") {
+      if (selectedOrder) {
+        setActiveShipmentId(selectedOrder.order_id)
+        navigateTo("/inspections", { shipmentId: selectedOrder.order_id })
+      }
+      readLatestInspection()
+      return
+    }
+    if (command.type === "products") {
+      navigateTo("/catalogue")
+      say(copy.openingProducts)
+      return
+    }
+    if (command.type === "orders") {
+      navigateTo("/")
+      say(copy.openingOrders)
+      return
+    }
+    if (command.type === "next") {
+      if (currentPath === "/packing") readPackingList()
+      else if (currentPath === "/inspections") readLatestInspection()
+      else openPacking()
+      return
+    }
+    if (command.type === "capture") {
+      if (currentPath !== "/packing") openPacking()
+      say(copy.captureHelp)
+      return
+    }
+    if (command.type === "dictate") {
+      say("Tap Dictate review note to speak your note.")
+      return
+    }
+    if (command.type === "help") {
+      say(copy.help)
+      return
+    }
+    if (/^(?:approve|approve packing|looks correct|request correction|needs correction|reject|reject inspection)$/i.test(transcript.trim())) {
+      if (selectedOrder) navigateTo("/inspections", { shipmentId: selectedOrder.order_id })
+      say(copy.safeDecision)
+      return
+    }
+    say(copy.unknown)
+  }
+
+  function startListening(mode = "command") {
+    const Recognition = typeof window !== "undefined"
+      ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+      : null
+    if (!Recognition) {
+      setError("Voice input is not available in this browser. Try Chrome or use the on-screen controls.")
+      return
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch { /* no active recognition */ }
+    }
+    setError("")
+    setListening(true)
+    setHeard("")
+    const recognition = new Recognition()
+    recognition.lang = language
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognition.onresult = event => {
+      const transcript = event.results?.[0]?.[0]?.transcript?.trim() || ""
+      if (!transcript) {
+        say(copy.unknown)
+        return
+      }
+      setHeard(transcript)
+      if (mode === "note") {
+        if (insertReviewNote(transcript)) say(copy.noteReady)
+        else say(copy.noNoteField)
+      } else {
+        handleCommand(transcript)
+      }
+    }
+    recognition.onerror = event => {
+      const errors = {
+        "not-allowed": "Microphone access was blocked. Allow microphone access in your browser settings.",
+        "service-not-allowed": "This browser does not allow speech recognition on this site.",
+        "no-speech": "No speech was heard. Tap the microphone and try again.",
+        "audio-capture": "No microphone was found. Connect or enable a microphone.",
+        "network": "The browser speech service is unavailable. Try again or use the on-screen controls."
+      }
+      setError(errors[event.error] || copy.error)
+      setListening(false)
+    }
+    recognition.onend = () => setListening(false)
+    recognitionRef.current = recognition
+    try {
+      recognition.start()
+    } catch {
+      setListening(false)
+      setError(copy.error)
+    }
+  }
+
+  function stopListening() {
+    try { recognitionRef.current?.stop() } catch { /* already stopped */ }
+    setListening(false)
+  }
+
+  if (currentPath.startsWith("/checkout")) return null
+
+  return (
+    <div className="voice-assistant-dock">
+      {open && (
+        <section className="voice-assistant-panel" aria-label="ParcelProof voice assistant">
+          <div className="voice-assistant-header">
+            <div>
+              <strong>Talk to ParcelProof</strong>
+              <small>Voice-guided packing</small>
+            </div>
+            <button type="button" className="voice-assistant-close" onClick={() => { stopListening(); setOpen(false) }} aria-label="Close voice assistant">×</button>
+          </div>
+          <label className="voice-language-label" htmlFor="voice-language">Voice language</label>
+          <select id="voice-language" value={language} onChange={event => setLanguage(event.target.value)}>
+            <option value="en-IN">English (India)</option>
+            <option value="hi-IN">हिन्दी</option>
+            <option value="te-IN">తెలుగు</option>
+          </select>
+          <div className="voice-assistant-response" aria-live="polite">
+            {heard && <div className="voice-assistant-heard"><span>You said</span>{heard}</div>}
+            <p>{reply}</p>
+          </div>
+          {error && <div className="voice-assistant-error" role="alert">{error}</div>}
+          <div className="voice-assistant-actions">
+            {listening ? (
+              <button type="button" className="voice-listen-button listening" onClick={stopListening}>
+                <span className="voice-pulse" /> Listening · Stop
+              </button>
+            ) : (
+              <button type="button" className="voice-listen-button" onClick={() => startListening("command")}>
+                <span aria-hidden="true">🎙</span> Tap to speak
+              </button>
+            )}
+            {currentPath === "/inspections" && (
+              <button type="button" className="voice-note-button" disabled={listening} onClick={() => startListening("note")}>
+                Dictate review note
+              </button>
+            )}
+          </div>
+          <div className="voice-assistant-footnote">
+            Listens only after you tap. Approve, correct and reject decisions still require the on-screen review buttons.
+          </div>
+        </section>
+      )}
+      <button
+        type="button"
+        className="voice-assistant-launch"
+        aria-expanded={open}
+        onClick={() => setOpen(value => !value)}
+      >
+        <span aria-hidden="true">🎙</span>
+        <span>Voice guide</span>
+      </button>
+    </div>
+  )
+}
+
+
 // ─── Main App Component ───────────────────────────────────────────────────────
 export default function App() {
   const [orders, setOrders] = useState([])
@@ -983,6 +1482,16 @@ export default function App() {
           validate={validate}
           openInspector={openInspector}
           navigateTo={navigateTo}
+        />
+      )}
+
+      {!currentPath.startsWith('/checkout') && (
+        <VoiceAssistant
+          orders={orders}
+          activeShipmentId={activeShipmentId}
+          setActiveShipmentId={setActiveShipmentId}
+          navigateTo={navigateTo}
+          currentPath={currentPath}
         />
       )}
 
