@@ -36,6 +36,9 @@ const jsonResponse = (data, status = 200) => ({
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (String(url).endsWith('/api/auth/status')) {
+        return jsonResponse({ enabled: false, authenticated: true, configured: true, demo_username: '' })
+      }
       if (String(url).endsWith('/api/orders')) {
         return jsonResponse({ orders: mockOrders })
       }
