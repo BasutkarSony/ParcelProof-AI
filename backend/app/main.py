@@ -106,11 +106,11 @@ def _valid_demo_authorization(auth_header: str) -> bool:
 
 @app.middleware("http")
 async def protect_public_demo(request: Request, call_next):
-    """Protect public demo data and provider-backed actions with shared Basic Auth."""
+    """Apply shared Basic Auth only when the demo-auth flag is explicitly enabled."""
     required = os.getenv("PARCELPROOF_DEMO_AUTH_REQUIRED", "false").strip().lower() == "true"
     username = os.getenv("PARCELPROOF_DEMO_USERNAME", "").strip()
     password = os.getenv("PARCELPROOF_DEMO_PASSWORD", "")
-    enabled = required or bool(username) or bool(password)
+    enabled = required
 
     # Render health checks must remain public so the platform can monitor the service.
     is_health_check = request.method == "GET" and request.url.path == "/health"
