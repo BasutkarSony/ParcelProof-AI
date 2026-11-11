@@ -131,7 +131,7 @@ const EyeIcon = () => (
 )
 
 // ─── Shared Sidebar Component ─────────────────────────────────────────────────
-function Sidebar({ currentPath, ordersCount, navigateTo, demoUsername, onLogout }) {
+function Sidebar({ currentPath, ordersCount, navigateTo, demoUsername, onLogout, voiceAssistant }) {
   const isOrders = currentPath === '/' || currentPath === '/manifests'
   const isPacking = currentPath === '/packing'
   const isEvidence = currentPath === '/inspections'
@@ -153,6 +153,7 @@ function Sidebar({ currentPath, ordersCount, navigateTo, demoUsername, onLogout 
         <div className="nav-section nav-section-secondary">SANDBOX</div>
         <button type="button" className={`nav-item nav-item-btn ${isCheckout ? 'active' : ''}`} onClick={() => navigateTo('/checkout')} aria-current={isCheckout ? 'page' : undefined}><span aria-hidden="true"><CartIcon /></span><span>Test checkout</span></button>
       </nav>
+      {voiceAssistant}
       {onLogout && (
         <div className="sidebar-session">
           <div className="sidebar-session-identity"><span className="sidebar-session-dot" aria-hidden="true" /><span><small>Signed in as</small><strong>{demoUsername || 'Merchant demo'}</strong></span></div>
@@ -1459,6 +1460,15 @@ export default function App() {
         navigateTo={navigateTo}
         demoUsername={authStatus.enabled ? authStatus.demo_username : ''}
         onLogout={authStatus.enabled ? handleDemoLogout : null}
+        voiceAssistant={!currentPath.startsWith('/checkout') ? (
+          <VoiceAssistant
+            orders={orders}
+            activeShipmentId={activeShipmentId}
+            setActiveShipmentId={setActiveShipmentId}
+            navigateTo={navigateTo}
+            currentPath={currentPath}
+          />
+        ) : null}
       />
 
       {/* Main workspace routing */}
@@ -1557,16 +1567,6 @@ export default function App() {
           validate={validate}
           openInspector={openInspector}
           navigateTo={navigateTo}
-        />
-      )}
-
-      {!currentPath.startsWith('/checkout') && (
-        <VoiceAssistant
-          orders={orders}
-          activeShipmentId={activeShipmentId}
-          setActiveShipmentId={setActiveShipmentId}
-          navigateTo={navigateTo}
-          currentPath={currentPath}
         />
       )}
 
@@ -2983,16 +2983,12 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         </div>
       </header>
 
-      <section className="workspace-page-intro" aria-labelledby="packing-page-title">
+      <section className="workspace-page-intro packing-page-intro" aria-labelledby="packing-page-title">
         <div className="workspace-page-intro-copy">
           <div className="eyebrow">PACKING</div>
           <h1 id="packing-page-title">Pack this order</h1>
           <p>Check the items, then take one clear photo before sealing.</p>
         </div>
-        
-      </section>
-
-      <div className="packing-layout packing-layout-compact">
         <div className="packing-order-switcher">
           <label htmlFor="packing-order-select">Order</label>
           <select
@@ -3009,7 +3005,9 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
             ))}
           </select>
         </div>
+      </section>
 
+      <div className="packing-layout packing-layout-compact">
         {/* Right: Packing Station Workspace */}
         <section className="packing-main-panel" aria-label="Packing Station Area">
           {selectedShipment ? (
@@ -3027,9 +3025,17 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                 <div className="m-header-right">
                   {loading ? (
                     <span className="pill pill-unchecked">Loading order details…</span>
+                  ) : latestInspectionStatus === 'NEEDS_CORRECTION' ? (
+                    <span className="pill pill-warn">Correction needed</span>
+                  ) : latestInspectionStatus === 'REJECTED' ? (
+                    <span className="pill pill-blocked">Inspection rejected</span>
+                  ) : latestInspectionStatus === 'PENDING_HUMAN_REVIEW' ? (
+                    <span className="pill pill-warn">Awaiting your review</span>
+                  ) : latestInspectionStatus === 'APPROVED' ? (
+                    <span className="pill pill-pass">Packing approved</span>
                   ) : manifest ? (
                     <span className={`pill ${isFinalized ? 'pill-pass' : 'pill-warn'}`}>
-                      {isFinalized ? 'Items confirmed' : 'Items need confirmation'}
+                      {isFinalized ? 'Packing list confirmed' : 'Items need confirmation'}
                     </span>
                   ) : (
                     <span className="pill pill-unchecked">Packing list not created</span>

@@ -112,6 +112,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   flex-direction: column;
   z-index: 20;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
 }
 
 .brand {
@@ -5673,4 +5676,88 @@ button { min-height: 38px; }
   .packing-layout-compact { gap: 10px; }
   .packing-order-switcher { width: 100%; box-sizing: border-box; }
   .packing-main-panel { width: 100%; }
+}
+
+
+/* Keep voice guidance in the workspace rail, never floating over packing evidence. */
+.sidebar .voice-assistant-dock {
+  position: static;
+  width: 100%;
+  margin: 16px 0 0;
+  align-items: stretch;
+  gap: 8px;
+}
+.sidebar .voice-assistant-launch {
+  width: 100%;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 9px;
+  background: rgba(255,255,255,.07);
+  box-shadow: none;
+  color: #dce8f8;
+  font-size: 12px;
+}
+.sidebar .voice-assistant-launch:hover {
+  background: rgba(255,255,255,.13);
+  transform: none;
+}
+.sidebar .voice-assistant-panel {
+  width: 100%;
+  max-width: 100%;
+  max-height: 42vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 13px;
+  border-radius: 11px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+.sidebar .voice-assistant-panel select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.sidebar .voice-assistant-response { min-height: 54px; }
+.sidebar-session { flex: 0 0 auto; }
+.packing-page-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+.packing-page-intro .workspace-page-intro-copy { min-width: 0; flex: 1 1 auto; }
+.packing-page-intro .packing-order-switcher {
+  flex: 0 1 360px;
+  width: min(360px, 38%);
+  min-width: 240px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+}
+.packing-page-intro .packing-order-switcher select { width: 100%; min-width: 0; }
+@media (max-width: 680px) {
+  .sidebar { overflow: visible; height: auto; }
+  .sidebar .voice-assistant-dock {
+    position: relative;
+    width: auto;
+    align-self: flex-start;
+    margin: 0;
+  }
+  .sidebar .voice-assistant-launch {
+    width: auto;
+    min-height: 34px;
+    padding: 0 11px;
+    font-size: 11px;
+  }
+  .sidebar .voice-assistant-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: min(340px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: 65vh;
+    z-index: 100;
+  }
+  .packing-page-intro { align-items: stretch; flex-direction: column; gap: 12px; }
+  .packing-page-intro .packing-order-switcher { width: 100%; min-width: 0; flex: 0 0 auto; }
 }
