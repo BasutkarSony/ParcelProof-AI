@@ -92,10 +92,10 @@ class DemoAccessTests(unittest.TestCase):
             self.assertEqual(login.status_code, 200)
             self.assertTrue(login.cookies.get("parcelproof_demo_session"))
             self.assertIn("httponly", login.headers.get("set-cookie", "").lower())
-            self.assertEqual(client.get("/api/orders").status_code, 200)
+            self.assertEqual(client.get("/api/paypal/status").status_code, 200)
             logout = client.post("/api/auth/logout")
             self.assertEqual(logout.status_code, 200)
-            self.assertEqual(client.get("/api/orders").status_code, 401)
+            self.assertEqual(client.get("/api/paypal/status").status_code, 401)
 
     def test_wrong_password_is_rejected(self):
         with patch.dict(os.environ, {

@@ -153,10 +153,12 @@ function Sidebar({ currentPath, ordersCount, navigateTo, demoUsername, onLogout 
         <div className="nav-section nav-section-secondary">SANDBOX</div>
         <button type="button" className={`nav-item nav-item-btn ${isCheckout ? 'active' : ''}`} onClick={() => navigateTo('/checkout')} aria-current={isCheckout ? 'page' : undefined}><span aria-hidden="true"><CartIcon /></span><span>Test checkout</span></button>
       </nav>
-      <div className="sidebar-session">
-        <div className="sidebar-session-identity"><span className="sidebar-session-dot" aria-hidden="true" /><span><small>Signed in as</small><strong>{demoUsername || 'Merchant demo'}</strong></span></div>
-        <button type="button" className="sidebar-logout" onClick={onLogout}>Sign out</button>
-      </div>
+      {onLogout && (
+        <div className="sidebar-session">
+          <div className="sidebar-session-identity"><span className="sidebar-session-dot" aria-hidden="true" /><span><small>Signed in as</small><strong>{demoUsername || 'Merchant demo'}</strong></span></div>
+          <button type="button" className="sidebar-logout" onClick={onLogout}>Sign out</button>
+        </div>
+      )}
     </aside>
   )
 }
@@ -925,7 +927,7 @@ function VoiceAssistant({ orders, activeShipmentId, setActiveShipmentId, navigat
 }
 
 
-function DemoLoginView({ onLogin, loading, error, demoUsername, configured }) {
+export function DemoLoginView({ onLogin, loading, error, demoUsername, configured }) {
   const [username, setUsername] = useState(demoUsername || '')
   const [password, setPassword] = useState('')
   useEffect(() => { if (demoUsername) setUsername(demoUsername) }, [demoUsername])
@@ -1455,8 +1457,8 @@ export default function App() {
         currentPath={currentPath}
         ordersCount={orders.filter(order => Boolean(order.checkout_order_id)).length}
         navigateTo={navigateTo}
-        demoUsername={authStatus.demo_username}
-        onLogout={handleDemoLogout}
+        demoUsername={authStatus.enabled ? authStatus.demo_username : ''}
+        onLogout={authStatus.enabled ? handleDemoLogout : null}
       />
 
       {/* Main workspace routing */}
