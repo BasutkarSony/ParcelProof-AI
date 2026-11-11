@@ -31,6 +31,7 @@ const jsonResponse = (data, status = 200) => ({
   ok: status >= 200 && status < 300,
   status,
   json: async () => data,
+  text: async () => JSON.stringify(data),
 })
 
 describe('Dashboard', () => {
