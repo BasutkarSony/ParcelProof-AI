@@ -131,51 +131,32 @@ const EyeIcon = () => (
 )
 
 // ─── Shared Sidebar Component ─────────────────────────────────────────────────
-function Sidebar({ currentPath, ordersCount, navigateTo }) {
-  const isOrders = ['/', '/manifests', '/packing', '/inspections'].includes(currentPath)
+function Sidebar({ currentPath, ordersCount, navigateTo, demoUsername, onLogout }) {
+  const isOrders = currentPath === '/' || currentPath === '/manifests'
+  const isPacking = currentPath === '/packing'
+  const isEvidence = currentPath === '/inspections'
   const isCatalogue = currentPath === '/catalogue'
-  const isCheckout = currentPath === '/checkout' || currentPath === '/checkout/return' || currentPath === '/checkout/cancel'
-
+  const isCheckout = currentPath.startsWith('/checkout')
   return (
     <aside className="sidebar" aria-label="Application navigation">
       <div className="brand">
         <div className="brand-icon" aria-hidden="true">P</div>
-        <div className="brand-title">
-          <strong>ParcelProof AI</strong>
-          <small>PAYPAL PACKING CHECK</small>
-        </div>
+        <div className="brand-title"><strong>ParcelProof AI</strong><small>PAYMENT-LINKED PACKING CHECKS</small></div>
       </div>
-
       <nav aria-label="Main navigation">
         <div className="nav-section">WORKSPACE</div>
-        <button
-          className={`nav-item nav-item-btn ${isOrders ? 'active' : ''}`}
-          onClick={() => navigateTo('/')}
-          aria-current={isOrders ? 'page' : undefined}
-        >
-          <span aria-hidden="true">▣</span>
-          <span>Orders</span>
-          <span className="nav-badge" aria-label={`${ordersCount} paid orders`}>{ordersCount}</span>
-        </button>
-        <button
-          className={`nav-item nav-item-btn ${isCatalogue ? 'active' : ''}`}
-          onClick={() => navigateTo('/catalogue')}
-          aria-current={isCatalogue ? 'page' : undefined}
-        >
-          <span aria-hidden="true"><ManifestIcon /></span>
-          <span>Products</span>
-        </button>
-
-        <div className="nav-section" style={{ marginTop: '18px' }}>SANDBOX</div>
-        <button
-          className={`nav-item nav-item-btn ${isCheckout ? 'active' : ''}`}
-          onClick={() => navigateTo('/checkout')}
-          aria-current={isCheckout ? 'page' : undefined}
-        >
-          <span aria-hidden="true"><CartIcon /></span>
-          <span>Test checkout</span>
-        </button>
+        <button type="button" className={`nav-item nav-item-btn ${isOrders ? 'active' : ''}`} onClick={() => navigateTo('/')} aria-current={isOrders ? 'page' : undefined}><span aria-hidden="true">▣</span><span>Orders</span><span className="nav-badge" aria-label={`${ordersCount} paid orders`}>{ordersCount}</span></button>
+        <button type="button" className={`nav-item nav-item-btn ${isPacking ? 'active' : ''}`} onClick={() => navigateTo('/packing')} aria-current={isPacking ? 'page' : undefined}><span aria-hidden="true"><CameraIcon /></span><span>Packing</span></button>
+        <button type="button" className={`nav-item nav-item-btn ${isEvidence ? 'active' : ''}`} onClick={() => navigateTo('/inspections')} aria-current={isEvidence ? 'page' : undefined}><span aria-hidden="true"><EyeIcon /></span><span>Evidence history</span></button>
+        <div className="nav-section nav-section-secondary">SETUP</div>
+        <button type="button" className={`nav-item nav-item-btn ${isCatalogue ? 'active' : ''}`} onClick={() => navigateTo('/catalogue')} aria-current={isCatalogue ? 'page' : undefined}><span aria-hidden="true"><ManifestIcon /></span><span>Products</span></button>
+        <div className="nav-section nav-section-secondary">SANDBOX</div>
+        <button type="button" className={`nav-item nav-item-btn ${isCheckout ? 'active' : ''}`} onClick={() => navigateTo('/checkout')} aria-current={isCheckout ? 'page' : undefined}><span aria-hidden="true"><CartIcon /></span><span>Test checkout</span></button>
       </nav>
+      <div className="sidebar-session">
+        <div className="sidebar-session-identity"><span className="sidebar-session-dot" aria-hidden="true" /><span><small>Signed in as</small><strong>{demoUsername || 'Merchant demo'}</strong></span></div>
+        <button type="button" className="sidebar-logout" onClick={onLogout}>Sign out</button>
+      </div>
     </aside>
   )
 }
@@ -944,6 +925,35 @@ function VoiceAssistant({ orders, activeShipmentId, setActiveShipmentId, navigat
 }
 
 
+function DemoLoginView({ onLogin, loading, error, demoUsername, configured }) {
+  const [username, setUsername] = useState(demoUsername || '')
+  const [password, setPassword] = useState('')
+  useEffect(() => { if (demoUsername) setUsername(demoUsername) }, [demoUsername])
+  function submit(event) { event.preventDefault(); onLogin({ username: username.trim(), password }) }
+  return (
+    <main className="demo-login-page">
+      <section className="demo-login-brand-panel">
+        <div className="demo-login-brand"><span className="brand-icon">P</span><span><strong>ParcelProof AI</strong><small>PAYMENT-LINKED PACKING CHECKS</small></span></div>
+        <div className="demo-login-message"><span className="demo-login-kicker">BEFORE THE PARCEL IS SEALED</span><h1>Check the pack against what the buyer paid for.</h1><p>Review the paid order, check the packed items and keep a clear record of the merchant's decision.</p></div>
+        <div className="demo-login-foot">PayPal Sandbox · AI-assisted visual checks · Merchant-controlled decisions</div>
+      </section>
+      <section className="demo-login-form-side">
+        <form className="demo-login-card" onSubmit={submit}>
+          <div className="demo-login-card-heading"><span className="demo-login-lock"><LockIcon /></span><div><span className="eyebrow">MERCHANT WORKSPACE</span><h2>Sign in</h2></div></div>
+          <p className="demo-login-intro">Use the shared demo account to open the ParcelProof merchant workspace.</p>
+          {!configured && <div className="demo-login-error" role="alert">Demo sign-in is not configured. Please contact the demo owner.</div>}
+          {error && <div className="demo-login-error" role="alert">{error}</div>}
+          <label className="demo-login-field"><span>Demo username</span><input autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} required disabled={loading || !configured} /></label>
+          <label className="demo-login-field"><span>Password</span><input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required disabled={loading || !configured} /></label>
+          <button type="submit" className="demo-login-submit" disabled={loading || !configured || !username.trim() || !password}>{loading ? 'Signing in…' : 'Sign in to ParcelProof'}</button>
+          <div className="demo-login-helper">Demo access only. Do not enter real customer or payment information.</div>
+        </form>
+      </section>
+    </main>
+  )
+}
+
+
 // ─── Main App Component ───────────────────────────────────────────────────────
 export default function App() {
   const [orders, setOrders] = useState([])
@@ -994,41 +1004,95 @@ export default function App() {
   const [captureResult, setCaptureResult] = useState(null)
   const [captureError, setCaptureError] = useState('')
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
+  const [authStatus, setAuthStatus] = useState({ loading: true, enabled: false, authenticated: false, configured: true, demo_username: '' })
+  const [authLoginLoading, setAuthLoginLoading] = useState(false)
+  const [authLoginError, setAuthLoginError] = useState('')
 
   // Shared active shipment context across workflows
   const [activeShipmentId, setActiveShipmentId] = useState(null)
 
-  // Mount-only effect: register popstate listener & fetch initial shipments / paypal status
+  async function loadWorkspaceData() {
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch(`${API_BASE}/api/orders`, { credentials: 'same-origin' })
+      const data = await readApiJson(response)
+      if (!response.ok) throw new Error(data.detail || 'Could not load orders.')
+      const nextOrders = data.orders || []
+      setOrders(nextOrders)
+      setValidationRun(false)
+      setAiAnalysisRun(false)
+      setActiveShipmentId(current => current || nextOrders[0]?.order_id || null)
+    } catch (loadError) {
+      setError(loadError.message || 'Cannot connect to ParcelProof. Please refresh and try again.')
+    } finally {
+      setLoading(false)
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/paypal/status`, { credentials: 'same-origin' })
+      const data = await readApiJson(response)
+      if (!response.ok) throw new Error(data.detail || 'PayPal status unavailable.')
+      setPaypal(data)
+    } catch { setPaypal({ error: 'PayPal status unavailable' }) }
+  }
+
+  async function handleDemoLogin(credentials) {
+    setAuthLoginLoading(true)
+    setAuthLoginError('')
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      })
+      const data = await readApiJson(response)
+      if (!response.ok) throw new Error(data.detail || 'Sign-in failed. Check the demo username and password.')
+      setAuthStatus(current => ({ ...current, loading: false, authenticated: true, error: '' }))
+      await loadWorkspaceData()
+    } catch (loginError) {
+      setAuthLoginError(loginError.message || 'Sign-in failed. Please try again.')
+    } finally { setAuthLoginLoading(false) }
+  }
+
+  async function handleDemoLogout() {
+    try {
+      await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'same-origin' })
+    } finally {
+      setOrders([])
+      setSelectedOrder(null)
+      setResults({})
+      setAiResults({})
+      setAuthLoginError('')
+      setAuthStatus(current => ({ ...current, loading: false, authenticated: false }))
+      setPaypal({ loading: false })
+      setCurrentPath('/')
+      window.history.replaceState({}, '', '/')
+    }
+  }
+
   useEffect(() => {
+    let ignore = false
     const handleRouteChange = () => setCurrentPath(window.location.pathname)
     window.addEventListener('popstate', handleRouteChange)
-
-    fetch(`${API_BASE}/api/orders`)
-      .then(r => {
-        if (!r.ok) throw new Error('Could not load shipments')
-        return r.json()
-      })
-      .then(data => {
-        const ords = data.orders || []
-        setOrders(ords)
-        setValidationRun(false)
-        setAiAnalysisRun(false)
-        if (ords.length > 0 && !activeShipmentId) {
-          setActiveShipmentId(ords[0].order_id)
-        }
-      })
-      .catch(() => setError('Cannot connect to the backend. Make sure it is running.'))
-      .finally(() => setLoading(false))
-
-    fetch(`${API_BASE}/api/paypal/status`)
-      .then(r => {
-        if (!r.ok) throw new Error('Could not load PayPal status')
-        return r.json()
-      })
-      .then(data => setPaypal(data))
-      .catch(() => setPaypal({ error: 'PayPal status unavailable' }))
-
-    return () => window.removeEventListener('popstate', handleRouteChange)
+    async function bootstrap() {
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/status`, { credentials: 'same-origin' })
+        const data = await readApiJson(response)
+        if (!response.ok) throw new Error(data.detail || 'Could not verify demo access.')
+        if (ignore) return
+        setAuthStatus({ ...data, loading: false })
+        if (!data.enabled || data.authenticated) await loadWorkspaceData()
+        else { setLoading(false); setPaypal({ loading: false }) }
+      } catch {
+        if (ignore) return
+        setAuthStatus({ loading: false, enabled: true, authenticated: false, configured: true, demo_username: '', error: 'ParcelProof could not verify your session. Check your connection and try again.' })
+        setLoading(false)
+        setPaypal({ loading: false })
+      }
+    }
+    bootstrap()
+    return () => { ignore = true; window.removeEventListener('popstate', handleRouteChange) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Route-specific side effects
@@ -1378,12 +1442,21 @@ export default function App() {
   // ─── Route views ──────────────────────────────────────────────────────────
   const isDashboard = currentPath === '/'
 
+  if (authStatus.loading) {
+    return <main className="demo-auth-loading"><div className="loading-spinner"><SpinnerIcon /></div><p>Opening your ParcelProof workspace…</p></main>
+  }
+  if (authStatus.enabled && !authStatus.authenticated) {
+    return <DemoLoginView onLogin={handleDemoLogin} loading={authLoginLoading} error={authLoginError || authStatus.error || ''} demoUsername={authStatus.demo_username} configured={authStatus.configured !== false} />
+  }
+
   return (
     <div className="app-shell">
       <Sidebar
         currentPath={currentPath}
         ordersCount={orders.filter(order => Boolean(order.checkout_order_id)).length}
         navigateTo={navigateTo}
+        demoUsername={authStatus.demo_username}
+        onLogout={handleDemoLogout}
       />
 
       {/* Main workspace routing */}
@@ -2547,6 +2620,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0)
   const [, setInspectionResult] = useState(null)
   const [lastInspectionStatus, setLastInspectionStatus] = useState(null) // HTTP status of last provider failure (503 outage or 429 rate/quota limit)
+  const [latestInspectionStatus, setLatestInspectionStatus] = useState(null)
+  const [previousInspectionCount, setPreviousInspectionCount] = useState(0)
   const validationRun = useState(false)
   const aiAnalysisRun = useState(false)
   const inspectionInFlight = useRef(false) // synchronous guard against concurrent duplicate submissions
@@ -2650,6 +2725,30 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
       ignore = true
     }
   }, [selectedShipment])
+
+  useEffect(() => {
+    let ignore = false
+    async function loadPreviousChecks() {
+      if (!manifest?.id) {
+        setLatestInspectionStatus(null)
+        setPreviousInspectionCount(0)
+        return
+      }
+      try {
+        const response = await fetch(`${API_BASE}/api/manifests/${encodeURIComponent(manifest.id)}/inspections`)
+        const data = await readApiJson(response)
+        if (!response.ok) throw new Error(data.detail || 'Could not load previous checks.')
+        if (ignore) return
+        const checks = data.inspections || []
+        setPreviousInspectionCount(checks.length)
+        setLatestInspectionStatus(checks[0]?.inspection_status || null)
+      } catch {
+        if (!ignore) { setPreviousInspectionCount(0); setLatestInspectionStatus(null) }
+      }
+    }
+    loadPreviousChecks()
+    return () => { ignore = true }
+  }, [manifest?.id])
 
   // Format file size
   async function handleTrackingSubmit() {
@@ -2928,6 +3027,16 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                 </div>
               </div>
 
+              {(latestInspectionStatus === 'NEEDS_CORRECTION' || latestInspectionStatus === 'REJECTED') && (
+                <section className="correction-resume-banner" role="status">
+                  <div>
+                    <strong>{latestInspectionStatus === 'NEEDS_CORRECTION' ? 'Continue the correction for this order' : 'A new packing check is required'}</strong>
+                    <p>The paid order and confirmed packing list are unchanged. Resolve the issue, then add a new photo. Earlier checks remain in the history.</p>
+                  </div>
+                  <span>{previousInspectionCount} previous check{previousInspectionCount === 1 ? '' : 's'} saved</span>
+                </section>
+              )}
+
               {loading ? (
                 <div className="checkout-state-box" style={{ padding: '40px' }} role="status">
                   <div className="checkout-state-icon loading-spinner"><SpinnerIcon /></div>
@@ -3121,6 +3230,39 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         </section>
       </div>
     </main>
+  )
+}
+
+function EvidenceTimeline({ shipment, manifest, inspection }) {
+  const reviews = inspection?.review_history || []
+  const latestReview = reviews[reviews.length - 1]
+  const photos = inspection?.photos || []
+  const paymentLinked = Boolean(shipment?.checkout_order_id && (shipment?.paypal_capture_id || shipment?.transaction_id))
+  const manifestLocked = manifest?.status === 'FINALIZED' && Boolean(manifest?.manifest_hash)
+  const aiCompleted = Boolean(inspection && inspection.inspection_status !== 'AI_FAILED')
+  const entries = [
+    { title: paymentLinked ? 'PayPal payment linked' : 'Order linked', description: shipment?.paypal_capture_id ? 'The paid order and capture reference are attached to this shipment.' : 'This shipment is connected to its order record.', complete: Boolean(shipment?.checkout_order_id || shipment?.transaction_id) },
+    { title: manifestLocked ? 'Packing list confirmed' : 'Packing list', description: manifestLocked ? 'The item list was finalized and fingerprinted.' : 'The item list has not been finalized.', complete: manifestLocked },
+    { title: photos.length ? 'Packing photo stored' : 'Packing photo', description: photos.length ? `${photos.length} original photo${photos.length === 1 ? '' : 's'} stored with integrity records.` : 'No photo is attached to this inspection.', complete: photos.length > 0 },
+    { title: aiCompleted ? 'AI check recorded' : 'AI check did not complete', description: aiCompleted ? `Observations saved from ${inspection?.model_used || 'the configured vision model'}.` : 'The uploaded evidence remains recorded; an AI result is not available.', complete: aiCompleted },
+    { title: latestReview ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}` : 'Merchant decision pending', description: latestReview ? (latestReview.notes || 'The merchant recorded a decision for this inspection.') : 'The merchant still needs to review the original photo and AI observations.', complete: Boolean(latestReview) }
+  ]
+  return (
+    <section className="evidence-timeline-card" aria-label="Evidence timeline">
+      <div className="evidence-timeline-heading">
+        <div><span className="eyebrow">ORDER RECORD</span><h3>Evidence timeline</h3></div>
+        <p>One readable history of what was paid for, photographed and reviewed.</p>
+      </div>
+      <ol className="evidence-timeline">
+        {entries.map((entry, index) => (
+          <li key={entry.title} className={entry.complete ? 'complete' : 'pending'}>
+            <span className="evidence-timeline-marker" aria-hidden="true">{entry.complete ? '✓' : index + 1}</span>
+            <div><strong>{entry.title}</strong><p>{entry.description}</p></div>
+          </li>
+        ))}
+      </ol>
+      <p className="evidence-timeline-disclaimer">This timeline links saved application records. It is not a blockchain and does not prove the contents of a sealed parcel.</p>
+    </section>
   )
 }
 
@@ -3379,6 +3521,10 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                 </div>
               ) : (
                 <div className="inspections-view-content">
+                  {inspectionDetail && (
+                    <EvidenceTimeline shipment={selectedShipment} manifest={manifest} inspection={inspectionDetail} />
+                  )}
+
                   {/* Human Review Banner - Prominent & Mandatory Safeguard */}
                   <div className="human-review-banner">
                     <div className="hr-shield-badge">
