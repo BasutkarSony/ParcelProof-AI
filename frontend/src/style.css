@@ -5647,3 +5647,30 @@ button { min-height: 38px; }
 .evidence-latest-decision strong { color: var(--text-main); font-size: 11px; }
 .evidence-latest-decision p { margin-top: 4px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
 .evidence-latest-decision small { display: block; margin-top: 5px; color: var(--text-subtle); font-size: 9px; }
+
+
+/* Packing needs a full-width content panel on desktop and mobile. */
+.packing-layout-compact {
+  width: 100%;
+  align-items: stretch;
+}
+.packing-layout-compact > .packing-main-panel {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  align-self: stretch;
+}
+.packing-layout-compact .packing-main-panel > .manifest-header-card,
+.packing-layout-compact .packing-main-panel > .checkout-state-box,
+.packing-layout-compact .packing-main-panel > .correction-resume-banner,
+.packing-layout-compact .packing-main-panel > .packing-station-workspace,
+.packing-layout-compact .packing-main-panel > .findings-box {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+@media (max-width: 680px) {
+  .packing-layout-compact { gap: 10px; }
+  .packing-order-switcher { width: 100%; box-sizing: border-box; }
+  .packing-main-panel { width: 100%; }
+}

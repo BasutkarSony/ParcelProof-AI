@@ -2610,7 +2610,7 @@ export function ExportDocumentWorkflow({ shipment }) {
 // ─── Packing Station Workflow View ────────────────────────────────────────────
 export function PackingStationView({ orders, activeShipmentId, setActiveShipmentId, navigateTo }) {
   const [manifest, setManifest] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   // Upload state
@@ -2675,6 +2675,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     setUploadError('')
     setProcessingStatus('')
     setManifest(null)
+    setLatestInspectionStatus(null)
+    setPreviousInspectionCount(0)
     setError('')
     setLoading(true)
     setActiveShipmentId(orderId)
@@ -2700,7 +2702,11 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
 
     let ignore = false
     async function fetchManifest() {
-      if (!selectedShipment) return
+      if (!selectedShipment) {
+        setManifest(null)
+        setLoading(false)
+        return
+      }
       setLoading(true)
       setError('')
       try {
@@ -3019,12 +3025,14 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                   </p>
                 </div>
                 <div className="m-header-right">
-                  {manifest ? (
+                  {loading ? (
+                    <span className="pill pill-unchecked">Loading order details…</span>
+                  ) : manifest ? (
                     <span className={`pill ${isFinalized ? 'pill-pass' : 'pill-warn'}`}>
                       {isFinalized ? 'Items confirmed' : 'Items need confirmation'}
                     </span>
                   ) : (
-                    <span className="pill pill-unchecked">NO MANIFEST</span>
+                    <span className="pill pill-unchecked">Packing list not created</span>
                   )}
                 </div>
               </div>
@@ -3236,18 +3244,31 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
 }
 
 function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] }) {
-  const reviews = inspection?.review_history || []
-  const latestReview = reviews[reviews.length - 1]
+  const selectedReview = (inspection?.review_history || []).slice(-1)[0] || null
+  const latestReviewRun = inspectionRuns.find(run => run.latest_review) || null
+  const latestReview = selectedReview || latestReviewRun?.latest_review || null
+  const latestRun = inspectionRuns[0] || null
+  const newerRunNeedsReview = Boolean(latestRun && latestRun.inspection_status === 'PENDING_HUMAN_REVIEW' && !latestRun.latest_review && latestReview)
   const photos = inspection?.photos || []
   const paymentLinked = Boolean(shipment?.checkout_order_id && (shipment?.paypal_capture_id || shipment?.transaction_id))
   const manifestLocked = manifest?.status === 'FINALIZED' && Boolean(manifest?.manifest_hash)
   const aiCompleted = Boolean(inspection && inspection.inspection_status !== 'AI_FAILED')
+  const merchantTitle = newerRunNeedsReview
+    ? 'Latest check awaits your decision'
+    : latestReview
+      ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}`
+      : 'Merchant decision pending'
+  const merchantDescription = newerRunNeedsReview
+    ? `Previous decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}. ${latestReview.notes || 'The earlier check was reviewed.'} Review the newest inspection separately.`
+    : latestReview
+      ? (latestReview.notes || 'The merchant recorded a decision for this inspection.')
+      : 'The merchant still needs to review the original photo and AI observations.'
   const entries = [
     { title: paymentLinked ? 'PayPal payment linked' : 'Order linked', description: shipment?.paypal_capture_id ? 'The paid order and capture reference are attached to this shipment.' : 'This shipment is connected to its order record.', complete: Boolean(shipment?.checkout_order_id || shipment?.transaction_id) },
     { title: manifestLocked ? 'Packing list confirmed' : 'Packing list', description: manifestLocked ? 'The item list was finalized and fingerprinted.' : 'The item list has not been finalized.', complete: manifestLocked },
     { title: photos.length ? 'Packing photo stored' : 'Packing photo', description: photos.length ? `${photos.length} original photo${photos.length === 1 ? '' : 's'} stored with integrity records.` : 'No photo is attached to this inspection.', complete: photos.length > 0 },
     { title: aiCompleted ? 'AI check recorded' : 'AI check did not complete', description: aiCompleted ? `Observations saved from ${inspection?.model_used || 'the configured vision model'}.` : 'The uploaded evidence remains recorded; an AI result is not available.', complete: aiCompleted },
-    { title: latestReview ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}` : 'Merchant decision pending', description: latestReview ? (latestReview.notes || 'The merchant recorded a decision for this inspection.') : 'The merchant still needs to review the original photo and AI observations.', complete: Boolean(latestReview) }
+    { title: merchantTitle, description: merchantDescription, complete: Boolean(latestReview) && !newerRunNeedsReview }
   ]
   const runsInTimeOrder = [...inspectionRuns].reverse()
   return (
@@ -3276,7 +3297,8 @@ function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] 
                 <span className="evidence-run-number">{index + 1}</span>
                 <div className="evidence-run-copy">
                   <strong>{String(run.inspection_status || 'UNKNOWN').replaceAll('_', ' ')}</strong>
-                  <p>{run.model_used || 'AI result unavailable'} · {run.photo_count || 0} photo{run.photo_count === 1 ? '' : 's'}</p>
+                  <p>{run.model_used || 'AI result unavailable'} · {run.photo_count || 0} photo{run.photo_count === 1 ? '' : 's'}{run.latest_review ? ` · Merchant: ${run.latest_review.decision.replaceAll('_', ' ')}` : ' · Awaiting decision'}</p>
+                  {run.latest_review?.notes && <small>{run.latest_review.notes}</small>}
                   <small>{run.created_at ? new Date(run.created_at).toLocaleString() : 'Time not recorded'}</small>
                 </div>
               </li>
@@ -3286,9 +3308,9 @@ function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] 
       )}
       {latestReview && (
         <div className="evidence-latest-decision">
-          <strong>Latest merchant note</strong>
+          <strong>{newerRunNeedsReview ? 'Previous merchant decision' : 'Latest merchant decision'}</strong>
           <p>{latestReview.notes || 'No additional note was recorded.'}</p>
-          <small>{latestReview.reviewer_label || 'Merchant'}{latestReview.created_at ? ` · ${new Date(latestReview.created_at).toLocaleString()}` : ''}</small>
+          <small>{latestReview.reviewer_label || 'Merchant'}{latestReview.created_at ? ` · ${new Date(latestReview.created_at).toLocaleString()}` : ''}{newerRunNeedsReview ? ' · A newer inspection is awaiting review' : ''}</small>
         </div>
       )}
       <p className="evidence-timeline-disclaimer">This timeline links saved application records. It is not a blockchain and does not prove the contents of a sealed parcel.</p>
@@ -3302,7 +3324,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const [inspectionsList, setInspectionsList] = useState([])
   const [activeInspectionId, setActiveInspectionId] = useState(null)
   const [inspectionDetail, setInspectionDetail] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [reviewError, setReviewError] = useState('')
@@ -3334,7 +3356,10 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
     setTrackingError('')
     let ignore = false
     async function fetchManifestAndInspections() {
-      if (!selectedShipment) return
+      if (!selectedShipment) {
+        setLoading(false)
+        return
+      }
       setLoading(true)
       setError('')
       setManifest(null)
@@ -3496,14 +3521,16 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                   </p>
                 </div>
                 <div className="m-header-right">
-                  {inspectionDetail ? (
-                    <span className="pill pill-warn" style={{ fontSize: '12px', padding: '8px 14px' }}>
-                      {inspectionDetail.inspection_status}
+                  {loading ? (
+                    <span className="pill pill-unchecked">Loading order record…</span>
+                  ) : inspectionDetail ? (
+                    <span className={`pill ${inspectionDetail.inspection_status === 'APPROVED' ? 'pill-pass' : inspectionDetail.inspection_status === 'REJECTED' ? 'pill-blocked' : 'pill-warn'}`} style={{ fontSize: '12px', padding: '8px 14px' }}>
+                      {inspectionDetail.inspection_status.replaceAll('_', ' ')}
                     </span>
                   ) : manifest ? (
                     <span className="pill pill-unchecked">{manifest.status}</span>
                   ) : (
-                    <span className="pill pill-unchecked">NO MANIFEST</span>
+                    <span className="pill pill-unchecked">Packing list not created</span>
                   )}
                 </div>
               </div>
