@@ -88,7 +88,11 @@ The prototype demonstrated that the payment, manifest, photo, AI result and huma
 
 ## Judge testing instructions
 
-The hosted demo opens directly into the application; no browser Basic Auth password or separate app login is required.
+The hosted demo opens at a branded merchant sign-in screen. Use the shared demo credentials:
+- Username: `merchant.demo`
+- Password: `PackSafe#2026`
+
+This is one shared demonstration account, not separate merchant accounts. Successful sign-in creates a 12-hour HttpOnly browser session.
 
 Judges can use the existing synthetic demonstration order to inspect the order, finalized manifest, packing inspection, original photo and saved human decision. A new checkout is optional. If testing a fresh payment, use a PayPal Sandbox buyer account only; never use a live PayPal account.
 
@@ -103,4 +107,4 @@ The hosted service uses Render's Free plan and may take time to wake after inact
 - No carrier event feed is connected.
 - PayPal tracking writes remain disabled.
 - ParcelProof does not calculate or guarantee PayPal Seller Protection eligibility.
-- The prototype has no individual merchant accounts or role-based tenant separation.
+- The prototype has one shared demo login, not individual merchant accounts or role-based tenant separation.

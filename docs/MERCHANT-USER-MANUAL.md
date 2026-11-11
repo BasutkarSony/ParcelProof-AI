@@ -8,7 +8,11 @@ ParcelProof connects a verified PayPal payment to the items a merchant needs to 
 
 ## Open the demo
 
-Go to https://parcelproof-ai-058h.onrender.com. The app opens directly into the workspace; no browser password prompt or separate app login is required.
+Go to https://parcelproof-ai-058h.onrender.com and sign in:
+- Username: `merchant.demo`
+- Password: `PackSafe#2026`
+
+The shared demo session lasts up to 12 hours. Use only synthetic demo data.
 
 Use only synthetic demo data. Do not enter real customer, address or payment information. The hosted service runs on Render Free and may take time to wake after inactivity.
 
@@ -38,5 +42,5 @@ The app stores the finalized manifest fingerprint, photo SHA-256 digests, AI res
 - A photo cannot verify the contents of a sealed parcel.
 - No carrier event feed is connected.
 - PayPal tracking writes are disabled.
-- There are no individual merchant accounts or role-based access controls.
+- The hosted version uses one shared demo account, not individual merchant accounts or role-based access controls.
 - Do not use this prototype as the sole basis for a real-world shipping or dispute decision.

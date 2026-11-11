@@ -32,7 +32,10 @@ The older ShipProof-AI repository is a historical project snapshot. ParcelProof-
 - Render health check: /health returned HTTP 200.
 - App root: GET / returned HTTP 200 after the Basic Auth gate was disabled.
 - PARCELPROOF_DEMO_AUTH_REQUIRED=false.
-- The hosted demo opens directly into the application. There is no browser Basic Auth prompt or individual app login.
+- The hosted demo opens at a branded sign-in screen. The browser does not show a Basic Auth popup.
+- Shared demo username: `merchant.demo`.
+- Shared demo password: `PackSafe#2026`.
+- Successful sign-in creates a 12-hour HttpOnly session cookie. Merchant APIs require this session.
 
 The demo is public and uses synthetic data. It does not provide individual merchant accounts or tenant separation. Do not enter real customer, address or payment information.
 
@@ -121,7 +124,7 @@ The official rules require a working application, a public repository with an op
 2. The AI can miss product design/variant differences; human review is essential.
 3. There is no carrier event integration.
 4. PayPal tracking writes are disabled.
-5. The app has no individual merchant accounts or role-based access.
+5. The app has one shared demo account, not individual merchant accounts or role-based access.
 6. No measured reduction in packing errors, returns or support cost has been collected.
 7. A complete public-repository secret-history scan has not been independently recorded in this snapshot.
 

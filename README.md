@@ -6,7 +6,7 @@ ParcelProof AI is a PayPal-connected packing check for small online merchants wh
 
 **[Open the live demo](https://parcelproof-ai-058h.onrender.com)** · **[View the source code](https://github.com/BasutkarSony/ParcelProof-AI)** · **[Read the demo script](docs/DEMO-SCRIPT.md)**
 
-The hosted demo opens directly into the application. It uses PayPal Sandbox and synthetic demonstration records. Do not enter real customer or payment data.
+The hosted demo opens at a branded merchant sign-in screen. It uses PayPal Sandbox and synthetic demonstration records. Do not enter real customer or payment data.
 
 ## The problem
 
@@ -66,7 +66,9 @@ These are demonstration records and observed results, not a performance guarante
 
 **https://parcelproof-ai-058h.onrender.com**
 
-- No browser password or separate app login is required.
+- Sign in with the shared demo account:
+  - Username: `merchant.demo`
+  - Password: `PackSafe#2026`
 - Open **Orders**, choose an existing demonstration order and continue to its shipment.
 - Review its manifest, packing inspection and saved merchant decision.
 - **Test checkout** is a separate PayPal Sandbox tool. A fresh checkout requires a PayPal Sandbox buyer account; do not use a live PayPal account.
@@ -171,7 +173,7 @@ GitHub Actions also runs backend tests, PostgreSQL integration tests, frontend t
 - PayPal tracking writes are disabled in the hosted demo.
 - It does not calculate PayPal Seller Protection eligibility or guarantee a dispute outcome.
 - The hosted payment flow is PayPal Sandbox, not production payment processing.
-- There is no individual merchant login, role-based access or live-store integration.
+- The hosted demo has one shared merchant login, not individual merchant accounts, role-based access or live-store integration.
 - No measured reduction in errors, returns or support cost has been collected yet.
 
 The export-document reconciliation code is outside the primary packing-verification demonstration and is not part of the submission walkthrough.

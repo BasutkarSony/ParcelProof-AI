@@ -246,6 +246,30 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 409)
         self.assertEqual(get_inspection(self.inspection["id"])["inspection_status"], "REJECTED")
 
+    def test_correction_reinspection_reuses_the_same_manifest_and_preserves_history(self):
+        correction = review_packing_inspection(
+            self.inspection["id"],
+            {
+                "decision": "NEEDS_CORRECTION",
+                "reviewer_label": "Merchant",
+                "notes": "The exact colour and printed design are not verified. Replace the item and take a new photo.",
+            },
+        )
+        self.assertEqual(correction["inspection_status"], "NEEDS_CORRECTION")
+
+        original_manifest_hash = self.manifest["manifest_hash"]
+        replacement_inspection = self._create_inspection()
+        saved_manifest = store.get_manifest(self.manifest["id"])
+        saved_original = get_inspection(self.inspection["id"])
+        history = store.list_inspections_for_manifest(self.manifest["id"])
+
+        self.assertEqual(replacement_inspection["manifest_id"], self.manifest["id"])
+        self.assertEqual(saved_manifest["manifest_hash"], original_manifest_hash)
+        self.assertEqual(len(history), 2)
+        self.assertEqual(saved_original["inspection_status"], "NEEDS_CORRECTION")
+        self.assertEqual(saved_original["review_history"][0]["decision"], "NEEDS_CORRECTION")
+        self.assertEqual(replacement_inspection["inspection_status"], "PENDING_HUMAN_REVIEW")
+
     def test_new_packing_inspections_are_closed_after_tracking_submission(self):
         store.update_shipment(
             self.shipment["order_id"],

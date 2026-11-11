@@ -29,7 +29,13 @@ services:
           type: web
           envVarKey: RENDER_EXTERNAL_URL
       - key: PARCELPROOF_DEMO_AUTH_REQUIRED
-        value: "false"
+        value: "true"
+      - key: PARCELPROOF_DEMO_USERNAME
+        sync: false
+      - key: PARCELPROOF_DEMO_PASSWORD
+        sync: false
+      - key: PARCELPROOF_DEMO_SESSION_SECRET
+        sync: false
       - key: PAYPAL_TRACKING_SUBMISSION_ENABLED
         value: "false"
       - key: PAYPAL_CLIENT_ID
