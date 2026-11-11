@@ -55,7 +55,7 @@ from app.store import (
     finalize_manifest,
     create_inspection,
     get_inspection,
-    list_inspections_for_manifest,
+    list_inspection_summaries_for_manifest,
     record_inspection_review,
     create_shipment_for_order,
     get_shipment_by_order_id,
@@ -1739,23 +1739,24 @@ async def create_packing_inspection(
 
 @app.get("/api/manifests/{manifest_id}/inspections")
 def list_manifest_inspections(manifest_id: str):
-    """List all inspections for a manifest, most recent first."""
+    """List compact inspection history, including each run's latest merchant decision."""
     manifest = get_manifest(manifest_id)
     if manifest is None:
         raise HTTPException(status_code=404, detail="Manifest not found.")
-    inspections = list_inspections_for_manifest(manifest_id)
+    inspections = list_inspection_summaries_for_manifest(manifest_id)
     return {
         "manifest_id": manifest_id,
         "inspections": [
             {
-                "inspection_id": i["id"],
-                "inspection_status": i["inspection_status"],
-                "photo_count": i["photo_count"],
-                "model_used": i["model_used"],
-                "manifest_hash_at_inspection": i["manifest_hash_at_inspection"],
-                "created_at": i["created_at"],
+                "inspection_id": item["id"],
+                "inspection_status": item["inspection_status"],
+                "photo_count": item["photo_count"],
+                "model_used": item["model_used"],
+                "manifest_hash_at_inspection": item["manifest_hash_at_inspection"],
+                "created_at": item["created_at"],
+                "latest_review": item["latest_review"],
             }
-            for i in inspections
+            for item in inspections
         ],
     }
 

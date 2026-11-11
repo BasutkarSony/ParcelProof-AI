@@ -270,6 +270,35 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
         self.assertEqual(saved_original["review_history"][0]["decision"], "NEEDS_CORRECTION")
         self.assertEqual(replacement_inspection["inspection_status"], "PENDING_HUMAN_REVIEW")
 
+    def test_inspection_history_returns_compact_runs_with_prior_merchant_decisions(self):
+        review_packing_inspection(
+            self.inspection["id"],
+            {
+                "decision": "NEEDS_CORRECTION",
+                "reviewer_label": "Merchant",
+                "notes": "The exact printed design is not verified.",
+            },
+        )
+        newer = self._create_inspection()
+
+        with patch.dict(os.environ, {"PARCELPROOF_DEMO_AUTH_REQUIRED": "false"}):
+            response = TestClient(app).get(
+                f"/api/manifests/{self.manifest['id']}/inspections"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["manifest_id"], self.manifest["id"])
+        self.assertEqual(len(data["inspections"]), 2)
+        latest, previous = data["inspections"]
+        self.assertEqual(latest["inspection_id"], newer["id"])
+        self.assertEqual(latest["inspection_status"], "PENDING_HUMAN_REVIEW")
+        self.assertIsNone(latest["latest_review"])
+        self.assertEqual(previous["inspection_id"], self.inspection["id"])
+        self.assertEqual(previous["inspection_status"], "NEEDS_CORRECTION")
+        self.assertEqual(previous["latest_review"]["decision"], "NEEDS_CORRECTION")
+        self.assertEqual(previous["latest_review"]["notes"], "The exact printed design is not verified.")
+
     def test_new_packing_inspections_are_closed_after_tracking_submission(self):
         store.update_shipment(
             self.shipment["order_id"],

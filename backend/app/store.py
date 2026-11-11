@@ -1333,6 +1333,59 @@ def list_inspections_for_manifest(manifest_id: str) -> list[dict]:
     finally:
         conn.close()
 
+def list_inspection_summaries_for_manifest(manifest_id: str) -> list[dict]:
+    """Return compact inspection and latest-review summaries in one database query."""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                pi.id,
+                pi.inspection_status,
+                pi.photo_count,
+                pi.model_used,
+                pi.manifest_hash_at_inspection,
+                pi.created_at,
+                (SELECT ir.decision FROM inspection_reviews ir
+                 WHERE ir.inspection_id = pi.id
+                 ORDER BY ir.created_at DESC, ir.id DESC LIMIT 1) AS latest_review_decision,
+                (SELECT ir.notes FROM inspection_reviews ir
+                 WHERE ir.inspection_id = pi.id
+                 ORDER BY ir.created_at DESC, ir.id DESC LIMIT 1) AS latest_review_notes,
+                (SELECT ir.reviewer_label FROM inspection_reviews ir
+                 WHERE ir.inspection_id = pi.id
+                 ORDER BY ir.created_at DESC, ir.id DESC LIMIT 1) AS latest_review_reviewer_label,
+                (SELECT ir.created_at FROM inspection_reviews ir
+                 WHERE ir.inspection_id = pi.id
+                 ORDER BY ir.created_at DESC, ir.id DESC LIMIT 1) AS latest_review_created_at
+            FROM packing_inspections pi
+            WHERE pi.manifest_id = ?
+            ORDER BY pi.created_at DESC, pi.id DESC
+            """,
+            (manifest_id,),
+        ).fetchall()
+        summaries = []
+        for row in rows:
+            item = dict(row)
+            decision = item.pop("latest_review_decision")
+            notes = item.pop("latest_review_notes")
+            reviewer = item.pop("latest_review_reviewer_label")
+            reviewed_at = item.pop("latest_review_created_at")
+            item["latest_review"] = (
+                {
+                    "decision": decision,
+                    "notes": notes or "",
+                    "reviewer_label": reviewer or "Merchant",
+                    "created_at": reviewed_at,
+                }
+                if decision
+                else None
+            )
+            summaries.append(item)
+        return summaries
+    finally:
+        conn.close()
+
 
 # ---------------------------------------------------------------------------
 # Persistent shipment records linked to checkout orders
