@@ -144,19 +144,31 @@ describe('Human review correction loop', () => {
         shipment={order}
         manifest={manifest}
         inspection={{ inspection_status: 'AI_FAILED', photos: [] }}
-        inspectionRuns={[{
-          inspection_id: 'failed-1',
-          inspection_status: 'AI_FAILED',
-          model_used: null,
-          photo_count: 1,
-          created_at: '2026-11-12T10:00:00Z',
-          latest_review: null,
-        }]}
+        inspectionRuns={[
+          {
+            inspection_id: 'failed-2',
+            inspection_status: 'AI_FAILED',
+            model_used: null,
+            photo_count: 1,
+            created_at: '2026-11-12T11:00:00Z',
+            latest_review: null,
+          },
+          {
+            inspection_id: 'approved-1',
+            inspection_status: 'APPROVED',
+            model_used: 'gemini-3.5-flash-lite',
+            photo_count: 1,
+            created_at: '2026-11-12T10:00:00Z',
+            latest_review: { decision: 'APPROVED', notes: 'Earlier attempt approved.', reviewer_label: 'Merchant' },
+          }
+        ]}
       />
     )
 
     expect(screen.getByText('Merchant review unavailable')).toBeInTheDocument()
+    expect(screen.queryByText(/Merchant decision: approved/)).not.toBeInTheDocument()
     expect(screen.getByText(/AI failed · Not reviewable/)).toBeInTheDocument()
+    expect(screen.getByText(/Merchant: APPROVED/)).toBeInTheDocument()
     expect(screen.queryByText(/Awaiting merchant decision/)).not.toBeInTheDocument()
 
     const history = screen.getByText('Previous inspection attempts').closest('details')
