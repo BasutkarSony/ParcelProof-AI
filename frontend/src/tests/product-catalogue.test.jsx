@@ -48,10 +48,14 @@ describe('Product catalogue identity profiles', () => {
     fireEvent.change(screen.getByLabelText('Shop description for A5 Hardcover Notebook'), {
       target: { value: 'Hardcover notebook for everyday notes.' },
     })
+    fireEvent.click(screen.getByText('Extra details to help identify this version (optional)'))
+    fireEvent.change(screen.getByLabelText('Product matching details for A5 Hardcover Notebook'), {
+      target: { value: '' },
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Save product' }))
 
     await waitFor(() => {
-      expect(screen.getByText(/Reference photo not added/)).toBeInTheDocument()
+      expect(screen.getByText(/Saved\. This profile will be reused/)).toBeInTheDocument()
     })
     const uploadCall = fetch.mock.calls.find(call =>
       String(call[0]).endsWith('/api/catalog/NOTE-A5-003/identity')
@@ -99,7 +103,7 @@ describe('Product catalogue identity profiles', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save product' }))
 
     await waitFor(() => {
-      expect(screen.getByText(/Profile saved for future orders/)).toBeInTheDocument()
+      expect(screen.getByText('Reference photo saved')).toBeInTheDocument()
     })
     const uploadCall = fetch.mock.calls.find(call =>
       String(call[0]).endsWith('/api/catalog/NOTE-A5-003/identity')
