@@ -1076,7 +1076,10 @@ export default function App() {
 
   useEffect(() => {
     let ignore = false
-    const handleRouteChange = () => setCurrentPath(window.location.pathname)
+    const handleRouteChange = () => {
+      window.scrollTo(0, 0)
+      setCurrentPath(window.location.pathname)
+    }
     window.addEventListener('popstate', handleRouteChange)
     async function bootstrap() {
       try {
@@ -1420,6 +1423,7 @@ export default function App() {
 
   function navigateTo(path, opts = {}) {
     window.history.pushState({}, '', path)
+    window.scrollTo(0, 0)
     if (path === '/checkout') {
       setCart({})
       setCheckoutError('')
