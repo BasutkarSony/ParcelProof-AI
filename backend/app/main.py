@@ -354,10 +354,10 @@ async def save_catalogue_identity_profile(
         raise HTTPException(status_code=404, detail="Active catalogue product not found.")
 
     normalized_description = str(description or "").strip()
-    if not normalized_description or len(normalized_description) > 500:
+    if len(normalized_description) > 500:
         raise HTTPException(
             status_code=422,
-            detail="Product description is required and must be 500 characters or fewer.",
+            detail="Product matching details must be 500 characters or fewer.",
         )
     normalized_store_description = str(
         store_description if store_description is not None
