@@ -69,7 +69,10 @@ describe('Paid order item confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: /Items look right — continue/ }))
 
     await waitFor(() => {
-      expect(navigateTo).toHaveBeenCalledWith('/packing', { shipmentId: 'SHP-1001' })
+      expect(navigateTo).toHaveBeenCalledWith('/packing', {
+        shipmentId: 'SHP-1001',
+        manifest: finalizedManifest,
+      })
     })
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
   })

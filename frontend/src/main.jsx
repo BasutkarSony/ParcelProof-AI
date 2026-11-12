@@ -1034,6 +1034,7 @@ export default function App() {
 
   // Shared active shipment context across workflows
   const [activeShipmentId, setActiveShipmentId] = useState(null)
+  const [prefetchedManifest, setPrefetchedManifest] = useState(null)
 
   async function loadWorkspaceData() {
     setLoading(true)
@@ -1464,6 +1465,11 @@ export default function App() {
     if (opts.shipmentId) {
       setActiveShipmentId(opts.shipmentId)
     }
+    setPrefetchedManifest(
+      opts.manifest && opts.shipmentId
+        ? { shipmentId: opts.shipmentId, manifest: opts.manifest }
+        : null
+    )
     setCurrentPath(path)
   }
 
@@ -1540,6 +1546,7 @@ export default function App() {
           activeShipmentId={activeShipmentId}
           setActiveShipmentId={setActiveShipmentId}
           navigateTo={navigateTo}
+          prefetchedManifest={prefetchedManifest}
         />
       )}
 
@@ -1549,6 +1556,7 @@ export default function App() {
           activeShipmentId={activeShipmentId}
           setActiveShipmentId={setActiveShipmentId}
           navigateTo={navigateTo}
+          prefetchedManifest={prefetchedManifest}
         />
       )}
 
@@ -1890,7 +1898,7 @@ function ShipmentReviewMain({
       if (!response.ok) throw new Error(manifest.detail || 'Could not open this order.')
       navigateTo(
         manifest.status === 'FINALIZED' ? '/packing' : '/manifests',
-        { shipmentId: order.order_id }
+        { shipmentId: order.order_id, manifest }
       )
     } catch (requestError) {
       setOpenError(requestError.message || 'Could not open this order. Please try again.')
@@ -2008,7 +2016,7 @@ function ShipmentReviewMain({
 }
 
 // ─── Simple paid-order item confirmation ──────────────────────────────────────
-export function ShipmentsManifestView({ orders, activeShipmentId, navigateTo }) {
+export function ShipmentsManifestView({ orders, activeShipmentId, navigateTo, prefetchedManifest }) {
   const paidOrders = orders.filter(order => Boolean(order.checkout_order_id))
   const selectedShipment = paidOrders.find(order => order.order_id === activeShipmentId) || paidOrders[0] || null
   const [manifest, setManifest] = useState(null)
@@ -2023,6 +2031,12 @@ export function ShipmentsManifestView({ orders, activeShipmentId, navigateTo }) 
       setManifest(null)
       setError('')
       if (!selectedShipment) {
+        setLoading(false)
+        return
+      }
+
+      if (prefetchedManifest?.shipmentId === selectedShipment.order_id && prefetchedManifest.manifest) {
+        setManifest(prefetchedManifest.manifest)
         setLoading(false)
         return
       }
@@ -2047,13 +2061,13 @@ export function ShipmentsManifestView({ orders, activeShipmentId, navigateTo }) 
 
     loadPaidOrderItems()
     return () => { ignore = true }
-  }, [selectedShipment?.order_id])
+  }, [selectedShipment?.order_id, prefetchedManifest])
 
   async function confirmItemsAndContinue() {
     if (!selectedShipment || !manifest || confirming) return
 
     if (manifest.status === 'FINALIZED') {
-      navigateTo('/packing', { shipmentId: selectedShipment.order_id })
+      navigateTo('/packing', { shipmentId: selectedShipment.order_id, manifest })
       return
     }
 
@@ -2073,7 +2087,7 @@ export function ShipmentsManifestView({ orders, activeShipmentId, navigateTo }) 
         throw new Error(data.detail || 'Could not confirm these order items.')
       }
       setManifest(data)
-      navigateTo('/packing', { shipmentId: selectedShipment.order_id })
+      navigateTo('/packing', { shipmentId: selectedShipment.order_id, manifest: data })
     } catch (confirmError) {
       setError(confirmError.message || 'Could not confirm this order. Please try again.')
     } finally {
@@ -2632,7 +2646,7 @@ export function ExportDocumentWorkflow({ shipment }) {
 
 
 // ─── Packing Station Workflow View ────────────────────────────────────────────
-export function PackingStationView({ orders, activeShipmentId, setActiveShipmentId, navigateTo }) {
+export function PackingStationView({ orders, activeShipmentId, setActiveShipmentId, navigateTo, prefetchedManifest }) {
   const [manifest, setManifest] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -2736,6 +2750,12 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         setLoading(false)
         return
       }
+      if (prefetchedManifest?.shipmentId === selectedShipment.order_id && prefetchedManifest.manifest) {
+        setManifest(prefetchedManifest.manifest)
+        setLoading(false)
+        setError('')
+        return
+      }
       setLoading(true)
       setError('')
       try {
@@ -2761,7 +2781,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     return () => {
       ignore = true
     }
-  }, [selectedShipment])
+  }, [selectedShipment, prefetchedManifest])
 
   useEffect(() => {
     let ignore = false
