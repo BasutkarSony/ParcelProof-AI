@@ -175,33 +175,3 @@ npm test
 npm run lint
 npm run build
 ```
-
-GitHub Actions also runs the backend unit suite, PostgreSQL persistence integration, frontend tests/lint/production build and Docker image build.
-
-## Current scope and limitations
-
-ParcelProof is a working hackathon prototype, not a production shipping or dispute platform.
-
-- PayPal processing uses Sandbox, not live payments.
-- Gemini can be wrong. Visual similarity does not guarantee an exact SKU or product variant.
-- A photograph cannot verify the contents of a sealed parcel.
-- The merchant makes the final approve, correction or reject decision.
-- Carrier event feeds and independent dispatch/delivery verification are not implemented.
-- PayPal tracking writes are disabled in the hosted demo.
-- The prototype does not calculate Seller Protection eligibility or guarantee a dispute outcome.
-- The hosted demo uses a shared login and synthetic data, not individual merchant accounts or tenant isolation.
-- No measured reduction in packing errors, returns or support costs has been collected.
-
-Use the demo and test data only. Do not rely on this prototype as the sole basis for a real-world shipping or dispute decision.
-
-## Project docs
-
-- [2:50 demo script](docs/DEMO-SCRIPT.md)
-- [Merchant user guide](docs/MERCHANT-USER-MANUAL.md)
-- [QA status and verified behavior](docs/QA-STATUS.md)
-- [Release gate and remaining checks](docs/RELEASE-GATE.md)
-- [Devpost submission notes](docs/DEVPOST-SUBMISSION.md)
-
-## License
-
-MIT. See [LICENSE](LICENSE).
