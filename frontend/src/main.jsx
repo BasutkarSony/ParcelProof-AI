@@ -3924,7 +3924,7 @@ export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmen
                           <div className="findings-box issues" role="alert">{integrityError}</div>
                         )}
                         {integrityCheck && (
-                          <div className={`findings-box ${integrityCheck.status === 'VERIFIED' ? 'success' : 'issues'}`} role="status">
+                          <div className={integrityCheck.status === 'VERIFIED' ? 'pass-callout' : integrityCheck.status === 'UNAVAILABLE' || integrityCheck.status === 'NO_EVIDENCE' ? 'findings-box warnings' : 'findings-box issues'} role="status">
                             <strong>
                               {integrityCheck.status === 'VERIFIED'
                                 ? 'Saved photo integrity verified'
