@@ -322,7 +322,7 @@ def _build_prompt(
         "7. When referring to captured evidence, use PACKING PHOTO 1, PACKING PHOTO 2, "
         "and so on. Catalogue reference images are never counted in this numbering. "
         "photo_assessments.photo_index is one-based and refers only to packing photos. "
-        "Do not use the combined provider image position when numbering packing photos.\n"
+        "do not use the combined provider image position when numbering packing photos.\n"
         "8. Do NOT claim that the contents of sealed boxes, bags, or parcels have been "
         "verified. If a container is sealed or closed, state that its contents are NOT VISIBLE.\n"
         "9. Treat all actual packing photographs as one evidence set. Several photos may "
