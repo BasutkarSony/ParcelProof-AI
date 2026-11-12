@@ -35,6 +35,7 @@ flowchart TD
 ### What makes the flow different
 
 - **The paid order is the source.** ParcelProof verifies the PayPal order and capture, including amount and currency, before using the purchased line items and quantities.
+- **The packing screen shows the buyer's product names and quantities.** Private matching notes are kept out of the packer's order list. Extra distinguishing details, reference photos and a manually entered barcode number are optional product setup; barcode scanning is not implemented.
 - **The manifest is fixed before inspection.** The merchant confirms the declared contents; finalization creates a SHA-256 fingerprint used by later inspection records.
 - **AI observes; a person decides.** Gemini compares visible evidence with the manifest and private product identity details. Its output is advisory and never approves a shipment by itself.
 - **The merchant decision is recorded separately.** A correction request keeps the shipment on hold, and the decision and note remain in the inspection history. The current hosted QA run demonstrates the correction decision, but a corrected replacement photo followed by a successful re-inspection has not yet been demonstrated.
@@ -53,6 +54,8 @@ ParcelProof links the following records to the shipment:
 | Packing photographs and SHA-256 digests | Identify uploaded files and support a later byte-integrity recheck |
 | AI inspection result and model details | Preserve what the vision model reported |
 | Separate merchant decision and note | Record the human review outcome |
+
+The packing screen uses product names from the paid order rather than displaying private AI comparison instructions. Extra product-matching details and barcode numbers are optional; barcode numbers are entered manually and validated, not scanned.
 
 The review screen includes a **Verify saved photo** action. It re-reads each stored photo and compares its current SHA-256 digest and byte size with the upload-time record, reporting VERIFIED, MISMATCH or UNAVAILABLE.
 
