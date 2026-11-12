@@ -34,6 +34,32 @@ describe('Product catalogue identity profiles', () => {
     vi.restoreAllMocks()
   })
 
+  it('allows a merchant to save without optional matching notes or a barcode', async () => {
+    fetch.mockImplementation(async (url, options) => {
+      if (String(url).endsWith('/api/catalog/identity-profiles')) return jsonResponse({ products: catalogue })
+      if (String(url).endsWith('/api/catalog/NOTE-A5-003/identity') && options?.method === 'PUT') {
+        return jsonResponse({ product: { ...catalogue[0], description: '', barcode_gtin: null } })
+      }
+      return jsonResponse({ detail: 'Not found' }, 404)
+    })
+
+    render(<ProductCatalogueView />)
+    expect(await screen.findByText('A5 Hardcover Notebook')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Shop description for A5 Hardcover Notebook'), {
+      target: { value: 'Hardcover notebook for everyday notes.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save product' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Reference photo not added/)).toBeInTheDocument()
+    })
+    const uploadCall = fetch.mock.calls.find(call =>
+      String(call[0]).endsWith('/api/catalog/NOTE-A5-003/identity')
+    )
+    expect(uploadCall[1].body.get('description')).toBe('')
+    expect(uploadCall[1].body.get('barcode_gtin')).toBe('')
+  })
+
   it('shows products and saves description, GTIN and one reference image together', async () => {
     const updatedProduct = {
       ...catalogue[0],
