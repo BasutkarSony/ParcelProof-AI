@@ -5761,3 +5761,23 @@ button { min-height: 38px; }
   .packing-page-intro { align-items: stretch; flex-direction: column; gap: 12px; }
   .packing-page-intro .packing-order-switcher { width: 100%; min-width: 0; flex: 0 0 auto; }
 }
+
+
+/* Saved events are neutral; only actual decisions carry outcome colours. */
+.evidence-timeline li.state-recorded .evidence-timeline-marker { border-color: #cbd5e1; background: #f1f5f9; color: #64748b; }
+.evidence-timeline li.state-approved .evidence-timeline-marker { border-color: #a5d6bc; background: #e8f5ee; color: #176743; }
+.evidence-timeline li.state-attention .evidence-timeline-marker { border-color: #f1d49a; background: #fff3d9; color: #83510a; }
+.evidence-timeline li.state-rejected .evidence-timeline-marker { border-color: #efb0aa; background: #fff0ee; color: #b42318; }
+.evidence-timeline li.state-recorded strong { color: #334155; }
+.evidence-timeline li.state-attention strong { color: #83510a; }
+.ai-identity-caveat { margin-top: 10px; padding: 10px 12px; border-left: 3px solid #d9a441; background: #fffaf0; color: #6d5a3c; font-size: 12px; line-height: 1.5; }
+.identity-assessment-note { display: block; margin-top: 5px; color: var(--text-muted); font-size: 10px; line-height: 1.4; text-transform: none; }
+@media (max-width: 760px) {
+  .manifest-table, .manifest-table tbody, .manifest-table tr, .manifest-table td { display: block; width: 100%; min-width: 0; box-sizing: border-box; }
+  .manifest-table { min-width: 0; }
+  .manifest-table thead { display: none; }
+  .manifest-table tr { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0; margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 10px; background: #fff; }
+  .manifest-table td { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; min-width: 0; padding: 9px 7px; border: 0; text-align: left !important; overflow-wrap: anywhere; }
+  .manifest-table td::before { content: attr(data-label); color: var(--text-subtle); font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .manifest-table td[data-label="What was visible"] { grid-column: 1 / -1; }
+}

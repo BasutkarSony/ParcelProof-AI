@@ -3258,23 +3258,32 @@ function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] 
   const photos = inspection?.photos || []
   const paymentLinked = Boolean(shipment?.checkout_order_id && (shipment?.paypal_capture_id || shipment?.transaction_id))
   const manifestLocked = manifest?.status === 'FINALIZED' && Boolean(manifest?.manifest_hash)
-  const aiCompleted = Boolean(inspection && inspection.inspection_status !== 'AI_FAILED')
+  const aiCompleted = Boolean(inspection && !['AI_FAILED', 'FAILED'].includes(inspection.inspection_status))
   const merchantTitle = newerRunNeedsReview
-    ? 'Latest check awaits your decision'
+    ? 'Newest check needs your decision'
     : latestReview
       ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}`
       : 'Merchant decision pending'
   const merchantDescription = newerRunNeedsReview
-    ? `Previous decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}. ${latestReview.notes || 'The earlier check was reviewed.'} Review the newest inspection separately.`
+    ? `Earlier decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}. ${latestReview.notes || 'The earlier check was reviewed.'} The newer check has not been reviewed yet.`
     : latestReview
-      ? (latestReview.notes || 'The merchant recorded a decision for this inspection.')
-      : 'The merchant still needs to review the original photo and AI observations.'
+      ? (latestReview.notes || 'The merchant recorded a decision for this check.')
+      : 'Review the photo and AI observations before deciding.'
+  const merchantState = newerRunNeedsReview
+    ? 'attention'
+    : latestReview?.decision === 'APPROVED'
+      ? 'approved'
+      : latestReview?.decision === 'REJECTED'
+        ? 'rejected'
+        : latestReview?.decision === 'NEEDS_CORRECTION'
+          ? 'attention'
+          : 'pending'
   const entries = [
-    { title: paymentLinked ? 'PayPal payment linked' : 'Order linked', description: shipment?.paypal_capture_id ? 'The paid order and capture reference are attached to this shipment.' : 'This shipment is connected to its order record.', complete: Boolean(shipment?.checkout_order_id || shipment?.transaction_id) },
-    { title: manifestLocked ? 'Packing list confirmed' : 'Packing list', description: manifestLocked ? 'The item list was finalized and fingerprinted.' : 'The item list has not been finalized.', complete: manifestLocked },
-    { title: photos.length ? 'Packing photo stored' : 'Packing photo', description: photos.length ? `${photos.length} original photo${photos.length === 1 ? '' : 's'} stored with integrity records.` : 'No photo is attached to this inspection.', complete: photos.length > 0 },
-    { title: aiCompleted ? 'AI check recorded' : 'AI check did not complete', description: aiCompleted ? `Observations saved from ${inspection?.model_used || 'the configured vision model'}.` : 'The uploaded evidence remains recorded; an AI result is not available.', complete: aiCompleted },
-    { title: merchantTitle, description: merchantDescription, complete: Boolean(latestReview) && !newerRunNeedsReview }
+    { title: paymentLinked ? 'Payment received' : 'Order linked', description: shipment?.paypal_capture_id ? 'PayPal capture is attached to this order.' : 'This record is connected to the selected order.', state: paymentLinked ? 'recorded' : 'pending' },
+    { title: manifestLocked ? 'Packing list confirmed' : 'Packing list', description: manifestLocked ? 'The item list was saved before inspection.' : 'The item list has not been finalized.', state: manifestLocked ? 'recorded' : 'pending' },
+    { title: photos.length ? 'Packing photo saved' : 'Packing photo', description: photos.length ? `${photos.length} original photo${photos.length === 1 ? '' : 's'} saved for this check.` : 'No photo is attached to this check.', state: photos.length ? 'recorded' : 'pending' },
+    { title: aiCompleted ? 'AI observations saved' : 'AI check did not complete', description: aiCompleted ? 'The AI result is available for the merchant to review. It is not an approval.' : 'The uploaded photo is saved, but no AI result is available.', state: aiCompleted ? 'recorded' : 'attention' },
+    { title: merchantTitle, description: merchantDescription, state: merchantState }
   ]
   const runsInTimeOrder = [...inspectionRuns].reverse()
   return (
@@ -3285,8 +3294,8 @@ function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] 
       </div>
       <ol className="evidence-timeline">
         {entries.map((entry, index) => (
-          <li key={entry.title} className={entry.complete ? 'complete' : 'pending'}>
-            <span className="evidence-timeline-marker" aria-hidden="true">{entry.complete ? '✓' : index + 1}</span>
+          <li key={entry.title} className={`state-${entry.state}`}>
+            <span className="evidence-timeline-marker" aria-hidden="true">{entry.state === 'approved' ? '✓' : entry.state === 'attention' ? '!' : index + 1}</span>
             <div><strong>{entry.title}</strong><p>{entry.description}</p></div>
           </li>
         ))}
@@ -3595,15 +3604,15 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                     </div>
                     <div className="hr-banner-text">
                       <div className="hr-title-row">
-                        <strong>STATUS: {inspectionDetail?.inspection_status || 'PENDING_HUMAN_REVIEW'}</strong>
+                        <strong>{inspectionDetail?.inspection_status === 'APPROVED' ? 'You approved this packing check' : inspectionDetail?.inspection_status === 'REJECTED' ? 'This check was rejected' : inspectionDetail?.inspection_status === 'NEEDS_CORRECTION' ? 'This order needs a correction' : 'Your review is needed'}</strong>
                         <span className={`pill ${inspectionDetail?.inspection_status === 'APPROVED' ? 'pill-pass' : inspectionDetail?.inspection_status === 'REJECTED' ? 'pill-blocked' : 'pill-warn'}`}>
                           {inspectionDetail?.inspection_status === 'APPROVED'
-                            ? 'HUMAN REVIEW APPROVED'
+                            ? 'APPROVED'
                             : inspectionDetail?.inspection_status === 'REJECTED'
                             ? 'REJECTED'
                             : inspectionDetail?.inspection_status === 'NEEDS_CORRECTION'
-                            ? 'CORRECTION REQUIRED'
-                            : 'HUMAN ACTION REQUIRED'}
+                            ? 'NEEDS FIXING'
+                            : 'NEEDS YOUR DECISION'}
                         </span>
                       </div>
                       <p>
@@ -3641,12 +3650,13 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                       {aiResult?.inspection_summary && (
                         <div className="ai-summary-callout">
                           <div className="summary-callout-header">
-                            <span className="eyebrow" style={{ color: 'var(--cobalt)', margin: 0 }}>AI VISION INSPECTION SUMMARY</span>
+                            <span className="eyebrow" style={{ color: 'var(--cobalt)', margin: 0 }}>WHAT THE PHOTO CHECK FOUND</span>
                             <span className={`quality-badge q-${(imageQuality.overall || 'fair').toLowerCase()}`}>
                               Image Quality: {imageQuality.overall || 'UNKNOWN'}
                             </span>
                           </div>
                           <p className="summary-callout-body">{aiResult.inspection_summary}</p>
+                          <p className="ai-identity-caveat">AI can compare visible shape, colour and design. It cannot prove an exact SKU or see inside a sealed parcel. Check the saved product photo before deciding.</p>
                         </div>
                       )}
 
@@ -3881,8 +3891,8 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                       <div className="manifest-items-card">
                         <div className="items-card-header">
                           <div>
-                            <h3>Expected vs. Observed Shipment Goods Audit</h3>
-                            <p>AI vision observations are compared with the declared goods in the finalized manifest snapshot.</p>
+                            <h3>What the AI compared</h3>
+                            <p>Compare the visible item and quantity with the order and saved product photo. This is guidance, not proof of an exact SKU.</p>
                           </div>
                           <span className="stat-pill">{itemChecks.length} Items Checked</span>
                         </div>
@@ -3896,14 +3906,14 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                                 <th style={{ width: '90px', textAlign: 'center' }}>Expected</th>
                                 <th style={{ width: '90px', textAlign: 'center' }}>Observed</th>
                                 <th style={{ width: '130px', textAlign: 'center' }}>Result</th>
-                                <th style={{ width: '100px', textAlign: 'center' }}>Confidence</th>
+                                <th style={{ width: '100px', textAlign: 'center' }}>AI confidence</th>
                                 <th>Visual Evidence</th>
                               </tr>
                             </thead>
                             <tbody>
                               {itemChecks.map((chk, i) => {
                                 const resultBadgeClass =
-                                  chk.result === 'MATCH' ? 'pill-pass' :
+                                  chk.result === 'MATCH' ? 'pill-unchecked' :
                                   chk.result === 'POSSIBLE_MISSING' ? 'pill-blocked' :
                                   chk.result === 'POSSIBLE_EXTRA' ? 'pill-warn' :
                                   'pill-unchecked'
@@ -3915,29 +3925,30 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
 
                                 return (
                                   <tr key={i}>
-                                    <td className="field-readonly">{chk.sku || '—'}</td>
-                                    <td>
+                                    <td className="field-readonly" data-label="SKU">{chk.sku || '—'}</td>
+                                    <td data-label="Item">
                                       <strong>{chk.description}</strong>
                                     </td>
-                                    <td style={{ textAlign: 'center' }} className="field-readonly bold">
+                                    <td data-label="Expected" style={{ textAlign: 'center' }} className="field-readonly bold">
                                       {chk.expected_qty}
                                     </td>
-                                    <td style={{ textAlign: 'center' }}>
+                                    <td data-label="Seen in photo" style={{ textAlign: 'center' }}>
                                       <span className={`observed-qty-tag ${chk.observed_qty === null ? 'null-qty' : ''}`}>
                                         {chk.observed_qty === null ? 'Uncertain' : chk.observed_qty}
                                       </span>
                                     </td>
-                                    <td style={{ textAlign: 'center' }}>
+                                    <td data-label="AI observation" style={{ textAlign: 'center' }}>
                                       <span className={`pill ${resultBadgeClass}`}>
-                                        {chk.result}
+                                        {chk.result === 'MATCH' ? 'Appears consistent' : chk.result.replaceAll('_', ' ').toLowerCase()}
                                       </span>
+                                      {chk.identity_assessment && <small className="identity-assessment-note">Variant check: {chk.identity_assessment.replaceAll('_', ' ').toLowerCase()}{chk.matched_features?.length ? ` · compared ${chk.matched_features.join(', ')}` : ''}</small>}
                                     </td>
-                                    <td style={{ textAlign: 'center' }}>
+                                    <td data-label="AI confidence" style={{ textAlign: 'center' }}>
                                       <span className={confClass} style={{ fontSize: '10px', padding: '2px 8px' }}>
                                         {chk.confidence}
                                       </span>
                                     </td>
-                                    <td style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                    <td data-label="What was visible" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                                       {chk.visual_evidence || '—'}
                                     </td>
                                   </tr>
