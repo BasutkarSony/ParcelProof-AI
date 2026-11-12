@@ -74,4 +74,17 @@ describe('Dashboard', () => {
     expect(screen.queryByText('PACKING PHOTOS')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Products' })).toBeInTheDocument()
   })
+
+  it('resets the main page scroll when switching workspace sections', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'What needs packing?' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Products' }))
+    expect(scrollTo).toHaveBeenCalledWith(0, 0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Test checkout' }))
+    expect(scrollTo).toHaveBeenCalledTimes(2)
+  })
 })
