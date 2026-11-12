@@ -96,7 +96,7 @@ describe('Product catalogue identity profiles', () => {
     fireEvent.change(screen.getByLabelText('Reference photo for A5 Hardcover Notebook'), {
       target: { files: [referenceFile] },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save product profile' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save product' }))
 
     await waitFor(() => {
       expect(screen.getByText(/Profile saved for future orders/)).toBeInTheDocument()
