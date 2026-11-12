@@ -343,7 +343,7 @@ def get_catalogue_reference_image(sku: str):
 @app.put("/api/catalog/{sku}/identity")
 async def save_catalogue_identity_profile(
     sku: str,
-    description: str = Form(...),
+    description: str = Form(""),
     store_description: str | None = Form(None),
     barcode_gtin: str = Form(""),
     reference_image: UploadFile | None = File(None),
