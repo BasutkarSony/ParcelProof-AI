@@ -81,7 +81,7 @@ The video must be publicly visible and under three minutes. Use the real hosted 
 
 ## Final checks before clicking Submit
 
-- Confirm the existing Devpost project title is **ParcelProof AI**, not the older ShipProof AI name in the historical setup note.
+- Confirm the Devpost project title is **ParcelProof AI**.
 - Confirm its repository field points to https://github.com/BasutkarSony/ParcelProof-AI.
 - Confirm the live demo URL and judge login instructions work.
 - List the PayPal and AI tools and explain their actual use.

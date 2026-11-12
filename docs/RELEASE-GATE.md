@@ -14,9 +14,9 @@ This checklist reflects the verified state of the current PayPal AI Hackathon su
 - [x] Docker deployment image built successfully.
 - [x] Inspect the current `main` working tree: no real `.env`, DB, uploaded photo, local build or dependency artifacts are committed; `.gitignore` and `.dockerignore` exclude those paths.
 - [ ] Complete a full public repository secret/data audit across commit history.
-- [ ] Ensure the Devpost repository URL points to ParcelProof-AI, not the older ShipProof-AI snapshot.
+- [ ] Confirm the Devpost repository URL points to this canonical ParcelProof-AI repository.
 
-The previous public [ShipProof-AI repository](https://github.com/BasutkarSony/ShipProof-AI) is a historical snapshot created 30 October 2026. The current Render deployment and CI use ParcelProof-AI. The older repository is not archived; do not provide it as the submission source.
+Use this repository and its current `main` branch as the source for the submission, hosted demo and judge instructions.
 
 ## B. Hosted demo and persistence
 

@@ -11,7 +11,7 @@ This is a snapshot of the hosted hackathon demo and the latest verified applicat
 - Hosting: Render Free web service, Singapore.
 - Database and evidence storage: Supabase Postgres and private Storage.
 
-The older ShipProof-AI repository is a historical project snapshot. ParcelProof-AI is the repository connected to the live Render service and current CI.
+This is the canonical repository for the current hosted Render demo and its continuous-integration checks.
 
 ## Latest verified application revision
 
