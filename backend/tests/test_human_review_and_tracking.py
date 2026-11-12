@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from io import BytesIO
 import os
 import sys
@@ -32,6 +33,7 @@ from app.main import (
     submit_shipment_tracking,
     get_inspection_by_id,
     create_packing_inspection,
+    verify_inspection_photo_integrity,
 )
 
 
@@ -96,6 +98,41 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
                 }
             ],
         )
+
+    def test_photo_integrity_verification_detects_matching_and_changed_bytes(self):
+        photo_bytes = b"\xff\xd8\xffParcelProof integrity test image"
+        photo_id = "PHOTO-INTEGRITY-CHECK"
+        inspection = create_inspection(
+            manifest_id=self.manifest["id"],
+            manifest_hash=self.manifest["manifest_hash"],
+            model_used="gemini-test-model",
+            ai_result={"inspection_summary": "Integrity test."},
+            photo_records=[{
+                "id": photo_id,
+                "sha256": hashlib.sha256(photo_bytes).hexdigest(),
+                "mime_type": "image/jpeg",
+                "size_bytes": len(photo_bytes),
+            }],
+        )
+
+        with tempfile.TemporaryDirectory() as photo_dir:
+            photo_path = Path(photo_dir) / f"{photo_id}.jpg"
+            with patch("app.main.packing_inspector_service.PHOTO_DIR", Path(photo_dir)):
+                photo_path.write_bytes(photo_bytes)
+                verified = verify_inspection_photo_integrity(inspection["id"])
+                self.assertEqual(verified["status"], "VERIFIED")
+                self.assertEqual(verified["verified_count"], 1)
+                self.assertEqual(verified["photos"][0]["status"], "VERIFIED")
+
+                photo_path.write_bytes(photo_bytes + b"changed")
+                mismatch = verify_inspection_photo_integrity(inspection["id"])
+                self.assertEqual(mismatch["status"], "MISMATCH")
+                self.assertEqual(mismatch["photos"][0]["status"], "MISMATCH")
+
+                photo_path.unlink()
+                unavailable = verify_inspection_photo_integrity(inspection["id"])
+                self.assertEqual(unavailable["status"], "UNAVAILABLE")
+                self.assertEqual(unavailable["photos"][0]["status"], "UNAVAILABLE")
 
     def test_ai_provider_failure_preserves_uploaded_photo_evidence(self):
         with tempfile.TemporaryDirectory() as photo_dir:
