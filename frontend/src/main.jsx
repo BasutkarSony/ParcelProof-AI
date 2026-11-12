@@ -395,9 +395,8 @@ export function ProductCatalogueView() {
                         value={draft.description}
                         onChange={event => updateDraft(product.sku, 'description', event.target.value)}
                         placeholder="For example: navy cover, leaf print, round handle or 160 pages."
-                        required
                       />
-                      <small>Add only visible details that distinguish this version. These details are private and used for packing comparisons.</small>
+                      <small>Examples: navy cover, leaf print or round handle. Leave blank when a reference photo is enough.</small>
                     </label>
                     <label className="product-profile-field">
                       <span>Barcode number (optional)</span>
