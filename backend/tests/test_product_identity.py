@@ -96,6 +96,19 @@ class CatalogueIdentityApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         upload.assert_not_called()
 
+    def test_private_matching_details_can_be_left_blank(self):
+        response = self.client.put(
+            "/api/catalog/NOTE-A5-003/identity",
+            data={
+                "description": "",
+                "store_description": "Hardcover ruled notebook with 160 pages.",
+                "barcode_gtin": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["product"]["description"], "")
+        self.assertIsNone(response.json()["product"]["barcode_gtin"])
+
     def test_reference_image_is_saved_privately_and_served_through_app(self):
         image_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 8 + b"\xff\xd9"
         with patch("app.main.object_storage.upload_private_object") as upload:
