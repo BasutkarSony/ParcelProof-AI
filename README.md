@@ -38,6 +38,7 @@ flowchart TD
 - **The manifest is fixed before inspection.** The merchant confirms the declared contents; finalization creates a SHA-256 fingerprint used by later inspection records.
 - **AI observes; a person decides.** Gemini compares visible evidence with the manifest and private product identity details. Its output is advisory and never approves a shipment by itself.
 - **The merchant decision is recorded separately.** A correction request keeps the shipment on hold, and the decision and note remain in the inspection history. The current hosted QA run demonstrates the correction decision, but a corrected replacement photo followed by a successful re-inspection has not yet been demonstrated.
+- **Saved photo integrity can be rechecked.** The merchant can ask ParcelProof to retrieve each stored packing photo, recompute its SHA-256 digest and file size, and compare them with the values recorded at upload. The result distinguishes matching, changed and unavailable files. This checks stored-byte integrity since upload; it does not prove who took the photo or when.
 
 **Current demo boundary:** The hosted example demonstrates a PayPal Sandbox capture linked to a finalized manifest, a saved packing photo, a Gemini inspection and a separate merchant correction decision. It does not yet demonstrate a complete correction-and-reinspection cycle.
 
@@ -49,11 +50,13 @@ ParcelProof links the following records to the shipment:
 |---|---|
 | PayPal order and capture references | Tie the workflow to the paid order |
 | Finalized manifest and SHA-256 fingerprint | Preserve the merchant-declared contents |
-| Packing photographs and SHA-256 digests | Identify the uploaded evidence files |
+| Packing photographs and SHA-256 digests | Identify uploaded files and support a later byte-integrity recheck |
 | AI inspection result and model details | Preserve what the vision model reported |
 | Separate merchant decision and note | Record the human review outcome |
 
-This is an application-level evidence trail. **It is not a blockchain, does not prove what is inside a sealed parcel, and does not independently prove dispatch or delivery.**
+The review screen includes a **Verify saved photo** action. It re-reads each stored photo and compares its current SHA-256 digest and byte size with the upload-time record, reporting VERIFIED, MISMATCH or UNAVAILABLE.
+
+This is an application-level evidence trail. A successful check means the stored bytes still match the digest and size recorded at upload. **It does not prove who took the photo, its capture time, what is inside a sealed parcel, or dispatch and delivery. It is not a blockchain.**
 
 ## Try the hosted demo
 

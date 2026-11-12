@@ -22,7 +22,7 @@ Before sealing, the merchant uploads a packing photo. Google Gemini Vision compa
 
 The merchant reviews the original photo beside the saved catalogue reference and makes the decision. They can approve, reject, or request a correction with an explanation. In the verified hosted example, the merchant requests a correction, the decision and note are recorded, and the shipment remains on hold. The submission demonstrates this human correction decision; it does not yet demonstrate a corrected replacement photo followed by a successful re-inspection. Earlier inspection records and merchant decisions remain in the history.
 
-ParcelProof keeps an application-level evidence trail linking the PayPal capture reference, declared order contents, manifest fingerprint, stored packing-photo digests, AI observation and separate human decision. It is not a blockchain and does not prove what is inside a sealed parcel.
+ParcelProof keeps an application-level evidence trail linking the PayPal capture reference, declared order contents, manifest fingerprint, stored packing-photo digests, AI observation and separate human decision. The merchant can also re-check a saved packing photo: the application retrieves the stored bytes, recomputes the SHA-256 digest and file size, and compares them with the upload-time record. It reports whether the stored file still matches, differs or is unavailable. This verifies stored-byte integrity relative to the upload record; it does not establish the photo's source or capture time, and it does not prove what is inside a sealed parcel. This is not a blockchain.
 
 ## Why PayPal is central
 
@@ -32,7 +32,7 @@ PayPal is the source of the paid checkout order, not just an unrelated payment b
 
 - **PayPal Developer Platform — Orders v2 Sandbox:** buyer checkout, order approval and capture. The backend verifies the captured amount and currency before creating the shipment.
 - **Google Gemini Vision:** multimodal comparison of the packing photo, finalized manifest and saved product identity context. AI output remains advisory and requires merchant review.
-- **Python and FastAPI:** PayPal verification, order-to-manifest creation, photo validation, inspection, evidence records and human-review endpoints.
+- **Python and FastAPI:** PayPal verification, order-to-manifest creation, photo validation, Gemini inspection, stored-photo integrity verification, evidence records and human-review endpoints.
 - **React and Vite:** merchant Orders, Packing Station, inspection review and product catalogue screens.
 - **Supabase Postgres and private Storage:** hosted records and private evidence files.
 - **Render:** hosted demo deployment.
@@ -56,6 +56,7 @@ The hosted demo uses synthetic data and PayPal Sandbox. Do not enter real custom
   - Password: `PackSafe#2026`
 - Open **Orders**, select an existing paid demonstration order, and inspect its purchased products and quantities.
 - Continue to the manifest and Packing Station; review the saved inspection and merchant decision.
+- In inspection review, select **Verify saved photo** to recompute the stored photo hash and size against the upload-time record.
 - The existing saved mug example demonstrates that a merchant can request correction even when the AI observation says MATCH.
 - The **Test checkout** tool is separate. A fresh checkout requires a PayPal Sandbox buyer account; do not use a live PayPal account.
 - The Render Free service may need to wake after inactivity.

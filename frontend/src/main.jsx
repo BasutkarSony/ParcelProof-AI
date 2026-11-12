@@ -3417,6 +3417,9 @@ export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmen
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [reviewError, setReviewError] = useState('')
   const [reviewNotesExpanded, setReviewNotesExpanded] = useState(false)
+  const [integrityCheck, setIntegrityCheck] = useState(null)
+  const [integrityChecking, setIntegrityChecking] = useState(false)
+  const [integrityError, setIntegrityError] = useState('')
 
   const [trackingNumber, setTrackingNumber] = useState('')
   const [trackingCarrier, setTrackingCarrier] = useState('OTHER')
@@ -3537,6 +3540,8 @@ export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmen
   useEffect(() => {
     let ignore = false
     async function fetchInspectionDetail() {
+      setIntegrityCheck(null)
+      setIntegrityError('')
       if (!activeInspectionId) {
         setInspectionDetail(null)
         return
@@ -3566,6 +3571,25 @@ export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmen
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  }
+
+  async function verifySavedPhotoIntegrity() {
+    if (!inspectionDetail?.inspection_id || integrityChecking) return
+    setIntegrityChecking(true)
+    setIntegrityError('')
+    setIntegrityCheck(null)
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/inspections/${encodeURIComponent(inspectionDetail.inspection_id)}/integrity`
+      )
+      const data = await readApiJson(response)
+      if (!response.ok) throw new Error(data.detail || 'Could not verify the saved packing photos.')
+      setIntegrityCheck(data)
+    } catch (verifyError) {
+      setIntegrityError(verifyError.message || 'Could not verify the saved packing photos.')
+    } finally {
+      setIntegrityChecking(false)
+    }
   }
 
   const aiResult = inspectionDetail?.ai_result
@@ -3881,7 +3905,51 @@ export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmen
                         </div>
                       </div>
 
-                      
+                      <section className="photo-records-card" aria-label="Saved photo integrity verification">
+                        <div className="records-header">
+                          <div>
+                            <h3>Evidence integrity</h3>
+                            <p>Re-check the saved photo against its recorded upload hash.</p>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={verifySavedPhotoIntegrity}
+                            disabled={integrityChecking || !inspectionDetail?.photos?.length}
+                          >
+                            {integrityChecking ? 'Checking…' : 'Verify saved photo'}
+                          </button>
+                        </div>
+                        {integrityError && (
+                          <div className="findings-box issues" role="alert">{integrityError}</div>
+                        )}
+                        {integrityCheck && (
+                          <div className={integrityCheck.status === 'VERIFIED' ? 'pass-callout' : integrityCheck.status === 'UNAVAILABLE' || integrityCheck.status === 'NO_EVIDENCE' ? 'findings-box warnings' : 'findings-box issues'} role="status">
+                            <strong>
+                              {integrityCheck.status === 'VERIFIED'
+                                ? 'Saved photo integrity verified'
+                                : integrityCheck.status === 'MISMATCH'
+                                  ? 'Saved photo does not match its upload record'
+                                  : integrityCheck.status === 'NO_EVIDENCE'
+                                    ? 'No photo evidence recorded'
+                                    : 'Saved photo could not be checked'}
+                            </strong>
+                            <p>
+                              {integrityCheck.verified_count} of {integrityCheck.photo_count} photos match their recorded SHA-256 digest and file size.
+                            </p>
+                            <ul>
+                              {integrityCheck.photos.map(photo => (
+                                <li key={photo.photo_id}>
+                                  Photo {String(photo.photo_id).slice(0, 8)}…: {photo.status}
+                                </li>
+                              ))}
+                            </ul>
+                            <small>
+                              This checks the stored bytes against the values recorded at upload. It does not prove who took the photo, when it was taken, or what is inside a sealed parcel.
+                            </small>
+                          </div>
+                        )}
+                      </section>
 
                       <div className="manifest-items-card inspection-decision-card">
                         <div className="items-card-header">

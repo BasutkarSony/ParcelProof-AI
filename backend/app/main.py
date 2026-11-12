@@ -1869,6 +1869,95 @@ def get_inspection_photo(inspection_id: str, photo_id: str):
 
 
 
+@app.get("/api/inspections/{inspection_id}/integrity")
+def verify_inspection_photo_integrity(inspection_id: str):
+    """Recompute stored photo hashes and compare them with upload-time metadata."""
+    inspection = get_inspection(inspection_id)
+    if inspection is None:
+        raise HTTPException(status_code=404, detail="Inspection not found.")
+
+    extension_by_mime = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+    photo_results = []
+
+    for photo in inspection.get("photos", []):
+        photo_id = photo.get("id", "")
+        photo_bytes = None
+        extension = extension_by_mime.get(photo.get("mime_type"))
+
+        if photo.get("storage_path"):
+            try:
+                photo_bytes = object_storage.download_private_object(photo["storage_path"])
+            except object_storage.StorageConfigurationError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from None
+            except object_storage.StorageOperationError:
+                raise HTTPException(
+                    status_code=502,
+                    detail="A stored packing photo could not be retrieved for verification.",
+                ) from None
+        elif extension:
+            photo_path = packing_inspector_service.PHOTO_DIR / f"{photo_id}{extension}"
+            try:
+                photo_bytes = photo_path.read_bytes()
+            except OSError:
+                photo_bytes = None
+
+        expected_digest = str(photo.get("sha256") or "").lower()
+        expected_size = int(photo.get("size_bytes") or 0)
+        if photo_bytes is None:
+            photo_results.append({
+                "photo_id": photo_id,
+                "status": "UNAVAILABLE",
+                "expected_sha256": expected_digest,
+                "actual_sha256": None,
+                "expected_size_bytes": expected_size,
+                "actual_size_bytes": None,
+            })
+            continue
+
+        actual_digest = hashlib.sha256(photo_bytes).hexdigest()
+        digest_is_valid = (
+            len(expected_digest) == 64
+            and all(char in "0123456789abcdef" for char in expected_digest)
+        )
+        digest_matches = digest_is_valid and hmac.compare_digest(actual_digest, expected_digest)
+        size_matches = len(photo_bytes) == expected_size
+        photo_results.append({
+            "photo_id": photo_id,
+            "status": "VERIFIED" if digest_matches and size_matches else "MISMATCH",
+            "expected_sha256": expected_digest,
+            "actual_sha256": actual_digest,
+            "expected_size_bytes": expected_size,
+            "actual_size_bytes": len(photo_bytes),
+        })
+
+    if not photo_results:
+        overall_status = "NO_EVIDENCE"
+    elif all(item["status"] == "VERIFIED" for item in photo_results):
+        overall_status = "VERIFIED"
+    elif any(item["status"] == "MISMATCH" for item in photo_results):
+        overall_status = "MISMATCH"
+    else:
+        overall_status = "UNAVAILABLE"
+
+    verified_count = sum(item["status"] == "VERIFIED" for item in photo_results)
+    return {
+        "inspection_id": inspection_id,
+        "status": overall_status,
+        "verified_count": verified_count,
+        "photo_count": len(photo_results),
+        "photos": photo_results,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "scope": (
+            "Checks the currently stored photo bytes against the SHA-256 digest and size "
+            "recorded at upload. It does not establish the photo's source, capture time, "
+            "or the physical contents of a parcel."
+        ),
+    }
+
 
 @app.get("/{full_path:path}", include_in_schema=False)
 def serve_frontend_routes(full_path: str):
