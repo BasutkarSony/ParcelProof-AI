@@ -307,13 +307,13 @@ export function ProductCatalogueView() {
           <div className="eyebrow">PRODUCT IDENTITY</div>
           <h1>Set up each product once.</h1>
           <p>
-            Write a short description for buyers, then add private product details and one reference photo for packing checks.
-            ParcelProof reuses the private profile for future orders.
+            Add the product description customers see and, when useful, a clear reference photo.
+            Extra matching details and barcode numbers are optional.
           </p>
         </div>
         <div className="catalogue-identity-note">
-          <strong>Buyer copy and packing details are separate</strong>
-          <span>Only the short shop description appears at checkout. Reference photos stay private.</span>
+          <strong>Keep product setup simple</strong>
+          <span>Only the short description appears at checkout. Extra details and reference photos stay private.</span>
         </div>
       </section>
 
@@ -385,7 +385,7 @@ export function ProductCatalogueView() {
                   </label>
 
                   <details className="product-profile-advanced">
-                    <summary>Extra product details (optional)</summary>
+                    <summary>Extra details to help identify this version (optional)</summary>
                     <label className="product-profile-field">
                       <span>What helps tell this product apart?</span>
                       <textarea
@@ -438,7 +438,7 @@ export function ProductCatalogueView() {
                   )}
 
                   <div className="product-profile-actions">
-                    <span>{product.has_reference_image ? 'Profile saved for future orders' : 'Profile can be saved without a photo'}</span>
+                    <span>{product.has_reference_image ? 'Reference photo saved' : 'Reference photo not added'}</span>
                     <button className="btn-primary" type="submit" disabled={isSaving}>
                       {isSaving ? 'Saving…' : 'Save product profile'}
                     </button>
@@ -3186,7 +3186,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                     <div className="declared-items-chips">
                       {manifest.items?.map((it, i) => {
                         const orderedItem = (selectedShipment.items || []).find(item => item.sku === it.sku)
-                        const productName = orderedItem?.name || it.sku || String(it.description || 'Order item').split(/[.!?]/)[0]
+                        const productName = orderedItem?.name || it.sku || 'Order item'
                         return (
                           <span key={i} className="declared-chip">
                             <span className="chip-qty">{it.expected_qty}x</span>
