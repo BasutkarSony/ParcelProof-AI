@@ -27,10 +27,9 @@ flowchart TD
     G --> H{"Merchant reviews the evidence"}
     H -->|Approve| I["Human decision is recorded"]
     H -->|Request correction| J["Shipment stays on hold"]
-    J --> K["Merchant corrects the pack and takes a new photo"]
-    K --> F
+    J --> L["Linked application evidence record"]
     H -->|Reject| I
-    I --> L["Linked application evidence record"]
+    I --> L
 ```
 
 ### What makes the flow different
@@ -38,7 +37,9 @@ flowchart TD
 - **The paid order is the source.** ParcelProof verifies the PayPal order and capture, including amount and currency, before using the purchased line items and quantities.
 - **The manifest is fixed before inspection.** The merchant confirms the declared contents; finalization creates a SHA-256 fingerprint used by later inspection records.
 - **AI observes; a person decides.** Gemini compares visible evidence with the manifest and private product identity details. Its output is advisory and never approves a shipment by itself.
-- **Corrections remain traceable.** A correction request keeps the shipment on hold. The next photo is inspected against the same finalized manifest, while earlier inspection attempts and merchant decisions remain in history.
+- **The merchant decision is recorded separately.** A correction request keeps the shipment on hold, and the decision and note remain in the inspection history. The current hosted QA run demonstrates the correction decision, but a corrected replacement photo followed by a successful re-inspection has not yet been demonstrated.
+
+**Current demo boundary:** The hosted example demonstrates a PayPal Sandbox capture linked to a finalized manifest, a saved packing photo, a Gemini inspection and a separate merchant correction decision. It does not yet demonstrate a complete correction-and-reinspection cycle.
 
 ## The evidence record
 
