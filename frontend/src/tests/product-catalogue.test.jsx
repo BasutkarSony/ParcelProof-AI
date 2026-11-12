@@ -59,10 +59,11 @@ describe('Product catalogue identity profiles', () => {
     fireEvent.change(screen.getByLabelText('Shop description for A5 Hardcover Notebook'), {
       target: { value: updatedProduct.store_description },
     })
-    fireEvent.change(screen.getByLabelText('Packing verification details for A5 Hardcover Notebook'), {
+    fireEvent.click(screen.getByText('Extra details to help identify this version (optional)'))
+    fireEvent.change(screen.getByLabelText('Product matching details for A5 Hardcover Notebook'), {
       target: { value: updatedProduct.description },
     })
-    fireEvent.change(screen.getByLabelText('GTIN for A5 Hardcover Notebook'), {
+    fireEvent.change(screen.getByLabelText('Barcode number for A5 Hardcover Notebook'), {
       target: { value: '4006381333931' },
     })
     const referenceFile = new File(['reference-image'], 'notebook.jpg', { type: 'image/jpeg' })
