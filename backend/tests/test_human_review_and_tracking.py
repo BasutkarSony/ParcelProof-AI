@@ -144,6 +144,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 303)
         self.assertIn("review_status=NEEDS_CORRECTION", response.headers["location"])
+        self.assertIn(f"shipment_id={self.shipment['order_id']}", response.headers["location"])
         saved = get_inspection(self.inspection["id"])
         self.assertEqual(saved["inspection_status"], "NEEDS_CORRECTION")
         self.assertEqual(len(saved["review_history"]), 1)
@@ -168,6 +169,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 303)
         self.assertIn("review_error=", response.headers["location"])
+        self.assertIn(f"shipment_id={self.shipment['order_id']}", response.headers["location"])
         saved = get_inspection(self.inspection["id"])
         self.assertEqual(saved["inspection_status"], "PENDING_HUMAN_REVIEW")
         self.assertEqual(saved["review_history"], [])

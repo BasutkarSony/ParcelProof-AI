@@ -5822,3 +5822,29 @@ button { min-height: 38px; }
   .merchant-order-items { display: grid; gap: 5px; }
   .merchant-order-payment { width: fit-content; }
 }
+
+
+.correction-resume-note {
+  margin-top: 9px;
+  padding: 9px 11px;
+  border-left: 3px solid #d9a441;
+  border-radius: 0 6px 6px 0;
+  background: rgba(255, 247, 230, .72);
+  color: var(--text-main);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.review-note-details label {
+  display: block;
+  margin: 10px 0 6px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 700;
+}
+.review-note-details small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}

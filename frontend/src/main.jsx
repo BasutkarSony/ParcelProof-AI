@@ -2620,6 +2620,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   const [, setInspectionResult] = useState(null)
   const [lastInspectionStatus, setLastInspectionStatus] = useState(null) // HTTP status of last provider failure (503 outage or 429 rate/quota limit)
   const [latestInspectionStatus, setLatestInspectionStatus] = useState(null)
+  const [latestInspectionReview, setLatestInspectionReview] = useState(null)
   const [previousInspectionCount, setPreviousInspectionCount] = useState(0)
   const validationRun = useState(false)
   const aiAnalysisRun = useState(false)
@@ -2673,6 +2674,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     setProcessingStatus('')
     setManifest(null)
     setLatestInspectionStatus(null)
+    setLatestInspectionReview(null)
     setPreviousInspectionCount(0)
     setError('')
     setLoading(true)
@@ -2693,6 +2695,9 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
       setUploadError('')
       setProcessingStatus('')
       setManifest(null)
+      setLatestInspectionStatus(null)
+      setLatestInspectionReview(null)
+      setPreviousInspectionCount(0)
       setError('')
       setLoading(true)
     }
@@ -2736,6 +2741,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     async function loadPreviousChecks() {
       if (!manifest?.id) {
         setLatestInspectionStatus(null)
+        setLatestInspectionReview(null)
         setPreviousInspectionCount(0)
         return
       }
@@ -2747,8 +2753,13 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         const checks = data.inspections || []
         setPreviousInspectionCount(checks.length)
         setLatestInspectionStatus(checks[0]?.inspection_status || null)
+        setLatestInspectionReview(checks[0]?.latest_review || null)
       } catch {
-        if (!ignore) { setPreviousInspectionCount(0); setLatestInspectionStatus(null) }
+        if (!ignore) {
+          setPreviousInspectionCount(0)
+          setLatestInspectionStatus(null)
+          setLatestInspectionReview(null)
+        }
       }
     }
     loadPreviousChecks()
@@ -3045,6 +3056,9 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                   <div>
                     <strong>{latestInspectionStatus === 'NEEDS_CORRECTION' ? 'Continue the correction for this order' : 'A new packing check is required'}</strong>
                     <p>The paid order and confirmed packing list are unchanged. Resolve the issue, then add a new photo. Earlier checks remain in the history.</p>
+                    {latestInspectionReview?.notes && (
+                      <p className="correction-resume-note"><strong>Merchant's note:</strong> {latestInspectionReview.notes}</p>
+                    )}
                   </div>
                   <span>{previousInspectionCount} previous check{previousInspectionCount === 1 ? '' : 's'} saved</span>
                 </section>
@@ -3331,7 +3345,7 @@ function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] 
 }
 
 // ─── AI Inspection Results & Human Review View ────────────────────────────────
-function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, setActiveShipmentId, navigateTo }) {
+export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, setActiveShipmentId, navigateTo }) {
   const [manifest, setManifest] = useState(null)
   const [inspectionsList, setInspectionsList] = useState([])
   const [activeInspectionId, setActiveInspectionId] = useState(null)
@@ -3340,6 +3354,7 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const [error, setError] = useState('')
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [reviewError, setReviewError] = useState('')
+  const [reviewNotesExpanded, setReviewNotesExpanded] = useState(false)
 
   const [trackingNumber, setTrackingNumber] = useState('')
   const [trackingCarrier, setTrackingCarrier] = useState('OTHER')
@@ -3352,6 +3367,37 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
   const selectedShipment = useMemo(() => {
     return orders.find(o => o.order_id === activeShipmentId) || orders[0] || null
   }, [orders, activeShipmentId])
+
+  // Native browser form POSTs return with query-string feedback. Restore the
+  // shipment selection and show the result after the full-page redirect.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const shipmentId = params.get('shipment_id')
+    const knownShipment = shipmentId && orders.some(order => order.order_id === shipmentId)
+    if (shipmentId && knownShipment) setActiveShipmentId(shipmentId)
+
+    const formError = params.get('review_error')
+    const formStatus = params.get('review_status')
+    if (formError) {
+      setReviewError(formError)
+      setReviewNotesExpanded(true)
+    }
+    if (formStatus === 'APPROVED') setReviewFeedback('Approval saved for this packing check.')
+    if (formStatus === 'NEEDS_CORRECTION') {
+      setReviewFeedback('Correction saved. The shipment remains on hold until a new inspection is reviewed.')
+    }
+    if (formStatus === 'REJECTED') {
+      setReviewFeedback('Rejection saved. Resolve the packing issue before creating another inspection.')
+    }
+
+    const handled = !shipmentId || knownShipment
+    if (handled && (formError || formStatus || shipmentId)) {
+      for (const key of ['shipment_id', 'inspection_id', 'review_error', 'review_status']) params.delete(key)
+      const remaining = params.toString()
+      const nextUrl = window.location.pathname + (remaining ? `?${remaining}` : '') + window.location.hash
+      window.history.replaceState(window.history.state, '', nextUrl)
+    }
+  }, [orders, setActiveShipmentId])
 
   // Load manifest & inspections list whenever active shipment changes
   useEffect(() => {
@@ -3476,6 +3522,19 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
     inspectionDetail?.inspection_status === 'APPROVED' &&
     selectedShipment?.tracking_submission_status !== 'SUBMITTED' &&
     Boolean(paypal?.submission_enabled)
+
+  function requireExplanationForDecision(event) {
+    const noteField = event.currentTarget.form?.elements.namedItem('notes')
+    if (!String(noteField?.value || '').trim()) {
+      event.preventDefault()
+      setReviewError(
+        event.currentTarget.value === 'NEEDS_CORRECTION'
+          ? 'Add a note explaining what needs to be fixed before requesting a correction.'
+          : 'Add a note explaining why this inspection is being rejected.'
+      )
+      setReviewNotesExpanded(true)
+    }
+  }
 
   return (
     <main className="main" id="main-content">
@@ -3792,8 +3851,13 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                             <p className="inspection-decision-guidance">
                               AI can miss details. Check the photo yourself before approving.
                             </p>
-                            <details className="review-note-details">
-                              <summary>Add a note (optional)</summary>
+                            <details
+                              className="review-note-details"
+                              open={reviewNotesExpanded}
+                              onToggle={event => setReviewNotesExpanded(event.currentTarget.open)}
+                            >
+                              <summary>Explain your decision (required for fixing or rejecting)</summary>
+                              <label htmlFor="review-notes">What needs to be fixed?</label>
                               <textarea
                                 id="review-notes"
                                 name="notes"
@@ -3801,19 +3865,21 @@ function InspectionsReviewView({ orders, setOrders, paypal, activeShipmentId, se
                                 rows="2"
                                 maxLength={2000}
                                 defaultValue={suggestedReviewNote}
-                                placeholder="Add a short note if something needs explaining."
+                                placeholder="For example: the colour or printed design does not match the saved product reference."
+                                onChange={() => setReviewError('')}
                               />
+                              <small>Approval does not require a note. A correction or rejection must include a reason.</small>
                             </details>
                             <div className="inspection-decision-actions">
                               <button type="submit" name="decision" value="APPROVED" className="btn-primary">
                                 Looks correct — approve
                               </button>
-                              <button type="submit" name="decision" value="NEEDS_CORRECTION" className="btn-secondary">
+                              <button type="submit" name="decision" value="NEEDS_CORRECTION" className="btn-secondary" onClick={requireExplanationForDecision}>
                                 Needs fixing
                               </button>
                               <details className="review-more-options">
                                 <summary>More options</summary>
-                                <button type="submit" name="decision" value="REJECTED" className="btn-secondary">
+                                <button type="submit" name="decision" value="REJECTED" className="btn-secondary" onClick={requireExplanationForDecision}>
                                   Reject this check
                                 </button>
                               </details>

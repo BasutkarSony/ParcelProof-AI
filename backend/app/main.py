@@ -875,6 +875,13 @@ def review_packing_inspection_form(
     notes: str = Form(""),
 ):
     """Native browser form endpoint; works even when client-side event handling fails."""
+    redirect_context = {"inspection_id": inspection_id}
+    redirect_inspection = get_inspection(inspection_id)
+    if redirect_inspection:
+        redirect_manifest = get_manifest(redirect_inspection["manifest_id"])
+        if redirect_manifest and redirect_manifest.get("shipment_order_id"):
+            redirect_context["shipment_id"] = redirect_manifest["shipment_order_id"]
+
     try:
         result = _record_packing_review(
             inspection_id,
@@ -886,14 +893,14 @@ def review_packing_inspection_form(
         )
     except HTTPException as exc:
         query = urlencode({
+            **redirect_context,
             "review_error": str(exc.detail),
-            "inspection_id": inspection_id,
         })
         return RedirectResponse(url=f"/inspections?{query}", status_code=303)
 
     query = urlencode({
+        **redirect_context,
         "review_status": result["inspection_status"],
-        "inspection_id": inspection_id,
     })
     return RedirectResponse(url=f"/inspections?{query}", status_code=303)
 
