@@ -265,8 +265,8 @@ def _build_prompt(
     if reference_metas:
         image_order = (
             f"The first {len(reference_metas)} supplied images are catalogue reference "
-            "images in the exact order listed below. All remaining images are the "
-            "actual packing photographs for this shipment."
+            "images in the exact order listed below. The remaining supplied images "
+            "are actual packing photos for this shipment."
         )
     else:
         image_order = "All supplied images are actual packing photographs for this shipment."
@@ -304,7 +304,8 @@ def _build_prompt(
         "digits are clearly visible on the actual packing item or label. Do not claim "
         "that barcode bars were decoded by a scanner. An unreadable or absent label "
         "does not by itself mean the product is wrong.\n"
-        "5. Separate object detection from product-variant checking. Set "
+        "5. Do not infer unlisted requirements beyond the manifest description or saved product profile. "
+        "Separate object detection from product-variant checking. Set "
         "identity_assessment=CONSISTENT only when at least two distinctive physical "
         "features visible in the packing photo(s) agree with the manifest description "
         "or saved catalogue reference. List those features individually in "

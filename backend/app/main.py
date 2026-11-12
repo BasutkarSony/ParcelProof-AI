@@ -55,6 +55,7 @@ from app.store import (
     finalize_manifest,
     create_inspection,
     get_inspection,
+    list_inspections_for_manifest,
     list_inspection_summaries_for_manifest,
     record_inspection_review,
     create_shipment_for_order,
