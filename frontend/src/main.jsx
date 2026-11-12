@@ -3302,27 +3302,25 @@ export function EvidenceTimeline({ shipment, manifest, inspection, inspectionRun
   const aiCompleted = Boolean(inspection && !aiFailed)
   const merchantTitle = newerRunNeedsReview
     ? 'Newest check needs your decision'
-    : latestReview
-      ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}`
-      : aiFailed
-        ? 'Merchant review unavailable'
+    : aiFailed
+      ? 'Merchant review unavailable'
+      : latestReview
+        ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}`
         : 'Merchant decision pending'
   const merchantDescription = newerRunNeedsReview
     ? `Earlier decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}. ${latestReview.notes || 'The earlier check was reviewed.'} The newer check has not been reviewed yet.`
-    : latestReview
-      ? (latestReview.notes || 'The merchant recorded a decision for this check.')
-      : aiFailed
-        ? 'The AI check did not produce observations to review. Retry with a clear packing photo.'
+    : aiFailed
+      ? 'The latest AI check did not produce observations to review. Retry with a clear packing photo. Earlier merchant decisions remain in the history.'
+      : latestReview
+        ? (latestReview.notes || 'The merchant recorded a decision for this check.')
         : 'Review the photo and AI observations before deciding.'
-  const merchantState = newerRunNeedsReview
+  const merchantState = newerRunNeedsReview || aiFailed
     ? 'attention'
     : latestReview?.decision === 'APPROVED'
       ? 'approved'
-      : latestReview?.decision === 'REJECTED'
-        ? 'rejected'
-        : latestReview?.decision === 'NEEDS_CORRECTION' || aiFailed
-          ? 'attention'
-          : 'pending'
+      : latestReview?.decision === 'REJECTED' || latestReview?.decision === 'NEEDS_CORRECTION'
+        ? 'attention'
+        : 'pending'
   const entries = [
     { title: paymentLinked ? 'Payment received' : 'Order linked', description: shipment?.paypal_capture_id ? 'PayPal capture is attached to this order.' : 'This record is connected to the selected order.', state: paymentLinked ? 'recorded' : 'pending' },
     { title: manifestLocked ? 'Packing list confirmed' : 'Packing list', description: manifestLocked ? 'The item list was saved before inspection.' : 'The item list has not been finalized.', state: manifestLocked ? 'recorded' : 'pending' },
