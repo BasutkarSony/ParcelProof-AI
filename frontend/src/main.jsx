@@ -439,7 +439,7 @@ export function ProductCatalogueView() {
                   <div className="product-profile-actions">
                     <span>{product.has_reference_image ? 'Reference photo saved' : 'Reference photo not added'}</span>
                     <button className="btn-primary" type="submit" disabled={isSaving}>
-                      {isSaving ? 'Saving…' : 'Save product profile'}
+                      {isSaving ? 'Saving…' : 'Save product'}
                     </button>
                   </div>
                 </form>
@@ -3018,7 +3018,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
 
   const isManifestAssociated = Boolean(
     manifest &&
-    manifest.shipment_order_id === selectedShipment.order_id
+    manifest.shipment_order_id === selectedShipment?.order_id
   )
   const isFinalized = isManifestAssociated && manifest?.status === 'FINALIZED'
   const canSelectPhotos = !loading && isFinalized && !uploading
