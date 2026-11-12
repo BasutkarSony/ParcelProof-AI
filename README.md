@@ -1,18 +1,8 @@
-<div align="center">
-  <h1>ParcelProof AI</h1>
-  <p><strong>Check the pack against what the buyer paid for.</strong></p>
-  <p>PayPal-linked, AI-assisted packing review for small online merchants—before the parcel is sealed.</p>
-  <p>
-    <a href="https://parcelproof-ai-058h.onrender.com"><img src="https://img.shields.io/badge/Live%20demo-Open-1F6FEB?style=for-the-badge" alt="Open the live demo"></a>
-    <a href="https://github.com/BasutkarSony/ParcelProof-AI/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/BasutkarSony/ParcelProof-AI/ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI status"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-238636?style=for-the-badge" alt="MIT license"></a>
-  </p>
-  <p>
-    <a href="docs/DEMO-SCRIPT.md">Demo walkthrough</a> ·
-    <a href="docs/MERCHANT-USER-MANUAL.md">Merchant guide</a> ·
-    <a href="docs/DEVPOST-SUBMISSION.md">Submission notes</a>
-  </p>
-</div>
+# ParcelProof AI
+
+**Check the pack against what the buyer paid for.**
+
+PayPal-linked, AI-assisted packing review for small online merchants—before the parcel is sealed.
 
 ---
 
