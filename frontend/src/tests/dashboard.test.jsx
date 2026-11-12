@@ -73,6 +73,8 @@ describe('Dashboard', () => {
     expect(screen.queryByText('Sample records')).not.toBeInTheDocument()
     expect(screen.queryByText('PACKING PHOTOS')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Products' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Packing' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Evidence history' })).not.toBeInTheDocument()
   })
 
   it('resets the main page scroll when switching workspace sections', async () => {

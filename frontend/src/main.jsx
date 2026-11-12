@@ -132,9 +132,7 @@ const EyeIcon = () => (
 
 // ─── Shared Sidebar Component ─────────────────────────────────────────────────
 function Sidebar({ currentPath, ordersCount, navigateTo, demoUsername, onLogout, voiceAssistant }) {
-  const isOrders = currentPath === '/' || currentPath === '/manifests'
-  const isPacking = currentPath === '/packing'
-  const isEvidence = currentPath === '/inspections'
+  const isOrderWorkflow = ['/', '/manifests', '/packing', '/inspections'].includes(currentPath)
   const isCatalogue = currentPath === '/catalogue'
   const isCheckout = currentPath.startsWith('/checkout')
   return (
@@ -144,10 +142,8 @@ function Sidebar({ currentPath, ordersCount, navigateTo, demoUsername, onLogout,
         <div className="brand-title"><strong>ParcelProof AI</strong><small>PAYMENT-LINKED PACKING CHECKS</small></div>
       </div>
       <nav aria-label="Main navigation">
-        <div className="nav-section">WORKSPACE</div>
-        <button type="button" className={`nav-item nav-item-btn ${isOrders ? 'active' : ''}`} onClick={() => navigateTo('/')} aria-current={isOrders ? 'page' : undefined}><span aria-hidden="true">▣</span><span>Orders</span><span className="nav-badge" aria-label={`${ordersCount} paid orders`}>{ordersCount}</span></button>
-        <button type="button" className={`nav-item nav-item-btn ${isPacking ? 'active' : ''}`} onClick={() => navigateTo('/packing')} aria-current={isPacking ? 'page' : undefined}><span aria-hidden="true"><CameraIcon /></span><span>Packing</span></button>
-        <button type="button" className={`nav-item nav-item-btn ${isEvidence ? 'active' : ''}`} onClick={() => navigateTo('/inspections')} aria-current={isEvidence ? 'page' : undefined}><span aria-hidden="true"><EyeIcon /></span><span>Evidence history</span></button>
+        <div className="nav-section">WORKFLOW</div>
+        <button type="button" className={`nav-item nav-item-btn ${isOrderWorkflow ? 'active' : ''}`} onClick={() => navigateTo('/')} aria-current={isOrderWorkflow ? 'page' : undefined}><span aria-hidden="true">▣</span><span>Orders</span><span className="nav-badge" aria-label={`${ordersCount} paid orders`}>{ordersCount}</span></button>
         <div className="nav-section nav-section-secondary">SETUP</div>
         <button type="button" className={`nav-item nav-item-btn ${isCatalogue ? 'active' : ''}`} onClick={() => navigateTo('/catalogue')} aria-current={isCatalogue ? 'page' : undefined}><span aria-hidden="true"><ManifestIcon /></span><span>Products</span></button>
         <div className="nav-section nav-section-secondary">SANDBOX</div>
@@ -161,6 +157,31 @@ function Sidebar({ currentPath, ordersCount, navigateTo, demoUsername, onLogout,
         </div>
       )}
     </aside>
+  )
+}
+
+function OrderWorkflowProgress({ currentStep }) {
+  const steps = [
+    { title: 'Payment', detail: 'PayPal captured' },
+    { title: 'Items', detail: 'Confirm order list' },
+    { title: 'Packing', detail: 'Photo before sealing' },
+    { title: 'Review', detail: 'Merchant decision' }
+  ]
+  return (
+    <nav className="order-workflow-progress" aria-label="Order workflow progress">
+      <ol>
+        {steps.map((step, index) => {
+          const number = index + 1
+          const state = number < currentStep ? 'complete' : number === currentStep ? 'current' : 'upcoming'
+          return (
+            <li key={step.title} className={`order-workflow-step state-${state}`} aria-current={state === 'current' ? 'step' : undefined}>
+              <span className="order-workflow-step-number" aria-hidden="true">{state === 'complete' ? '✓' : number}</span>
+              <span className="order-workflow-step-copy"><strong>{step.title}</strong><small>{step.detail}</small></span>
+            </li>
+          )
+        })}
+      </ol>
+    </nav>
   )
 }
 
@@ -2075,6 +2096,8 @@ export function ShipmentsManifestView({ orders, activeShipmentId, navigateTo }) 
         </div>
       </header>
 
+      <OrderWorkflowProgress currentStep={2} />
+
       {!selectedShipment ? (
         <section className="order-confirmation-empty">
           <h1>No paid order selected</h1>
@@ -2995,6 +3018,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         </div>
       </header>
 
+      <OrderWorkflowProgress currentStep={3} />
+
       <section className="workspace-page-intro packing-page-intro" aria-labelledby="packing-page-title">
         <div className="workspace-page-intro-copy">
           <div className="eyebrow">PACKING</div>
@@ -3264,7 +3289,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   )
 }
 
-function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] }) {
+export function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] }) {
   const selectedReview = (inspection?.review_history || []).slice(-1)[0] || null
   const latestReviewRun = inspectionRuns.find(run => run.latest_review) || null
   const latestReview = selectedReview || latestReviewRun?.latest_review || null
@@ -3273,26 +3298,29 @@ function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] 
   const photos = inspection?.photos || []
   const paymentLinked = Boolean(shipment?.checkout_order_id && (shipment?.paypal_capture_id || shipment?.transaction_id))
   const manifestLocked = manifest?.status === 'FINALIZED' && Boolean(manifest?.manifest_hash)
-  const aiCompleted = Boolean(inspection && !['AI_FAILED', 'FAILED'].includes(inspection.inspection_status))
+  const aiFailed = Boolean(inspection && ['AI_FAILED', 'FAILED'].includes(inspection.inspection_status))
+  const aiCompleted = Boolean(inspection && !aiFailed)
   const merchantTitle = newerRunNeedsReview
     ? 'Newest check needs your decision'
-    : latestReview
-      ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}`
-      : 'Merchant decision pending'
+    : aiFailed
+      ? 'Merchant review unavailable'
+      : latestReview
+        ? `Merchant decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}`
+        : 'Merchant decision pending'
   const merchantDescription = newerRunNeedsReview
     ? `Earlier decision: ${latestReview.decision.replaceAll('_', ' ').toLowerCase()}. ${latestReview.notes || 'The earlier check was reviewed.'} The newer check has not been reviewed yet.`
-    : latestReview
-      ? (latestReview.notes || 'The merchant recorded a decision for this check.')
-      : 'Review the photo and AI observations before deciding.'
-  const merchantState = newerRunNeedsReview
+    : aiFailed
+      ? 'The latest AI check did not produce observations to review. Retry with a clear packing photo. Earlier merchant decisions remain in the history.'
+      : latestReview
+        ? (latestReview.notes || 'The merchant recorded a decision for this check.')
+        : 'Review the photo and AI observations before deciding.'
+  const merchantState = newerRunNeedsReview || aiFailed
     ? 'attention'
     : latestReview?.decision === 'APPROVED'
       ? 'approved'
-      : latestReview?.decision === 'REJECTED'
-        ? 'rejected'
-        : latestReview?.decision === 'NEEDS_CORRECTION'
-          ? 'attention'
-          : 'pending'
+      : latestReview?.decision === 'REJECTED' || latestReview?.decision === 'NEEDS_CORRECTION'
+        ? 'attention'
+        : 'pending'
   const entries = [
     { title: paymentLinked ? 'Payment received' : 'Order linked', description: shipment?.paypal_capture_id ? 'PayPal capture is attached to this order.' : 'This record is connected to the selected order.', state: paymentLinked ? 'recorded' : 'pending' },
     { title: manifestLocked ? 'Packing list confirmed' : 'Packing list', description: manifestLocked ? 'The item list was saved before inspection.' : 'The item list has not been finalized.', state: manifestLocked ? 'recorded' : 'pending' },
@@ -3316,25 +3344,35 @@ function EvidenceTimeline({ shipment, manifest, inspection, inspectionRuns = [] 
         ))}
       </ol>
       {runsInTimeOrder.length > 0 && (
-        <div className="evidence-run-history">
-          <div className="evidence-run-history-heading">
-            <strong>Inspection history</strong>
+        <details className="evidence-run-history">
+          <summary className="evidence-run-history-heading">
+            <strong>Previous inspection attempts</strong>
             <span>{runsInTimeOrder.length} saved attempt{runsInTimeOrder.length === 1 ? '' : 's'}</span>
-          </div>
+          </summary>
           <ol>
-            {runsInTimeOrder.map((run, index) => (
-              <li key={run.inspection_id || run.id}>
-                <span className="evidence-run-number">{index + 1}</span>
-                <div className="evidence-run-copy">
-                  <strong>{String(run.inspection_status || 'UNKNOWN').replaceAll('_', ' ')}</strong>
-                  <p>{run.model_used || 'AI result unavailable'} · {run.photo_count || 0} photo{run.photo_count === 1 ? '' : 's'}{run.latest_review ? ` · Merchant: ${run.latest_review.decision.replaceAll('_', ' ')}` : ' · Awaiting decision'}</p>
-                  {run.latest_review?.notes && <small>{run.latest_review.notes}</small>}
-                  <small>{run.created_at ? new Date(run.created_at).toLocaleString() : 'Time not recorded'}</small>
-                </div>
-              </li>
-            ))}
+            {runsInTimeOrder.map((run, index) => {
+              const failedRun = ['AI_FAILED', 'FAILED'].includes(run.inspection_status)
+              const reviewState = run.latest_review
+                ? `Merchant: ${run.latest_review.decision.replaceAll('_', ' ')}`
+                : failedRun
+                  ? 'AI failed · Not reviewable'
+                  : run.inspection_status === 'PENDING_HUMAN_REVIEW'
+                    ? 'Awaiting merchant decision'
+                    : 'No merchant decision'
+              return (
+                <li key={run.inspection_id || run.id}>
+                  <span className="evidence-run-number">{index + 1}</span>
+                  <div className="evidence-run-copy">
+                    <strong>{String(run.inspection_status || 'UNKNOWN').replaceAll('_', ' ')}</strong>
+                    <p>{run.model_used || 'AI result unavailable'} · {run.photo_count || 0} photo{run.photo_count === 1 ? '' : 's'} · {reviewState}</p>
+                    {run.latest_review?.notes && <small>{run.latest_review.notes}</small>}
+                    <small>{run.created_at ? new Date(run.created_at).toLocaleString() : 'Time not recorded'}</small>
+                  </div>
+                </li>
+              )
+            })}
           </ol>
-        </div>
+        </details>
       )}
       {latestReview && (
         <div className="evidence-latest-decision">
@@ -3554,6 +3592,8 @@ export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmen
           </button>
         </div>
       </header>
+
+      <OrderWorkflowProgress currentStep={4} />
 
       <section className="workspace-page-intro" aria-labelledby="inspection-page-title">
         <div className="workspace-page-intro-copy">

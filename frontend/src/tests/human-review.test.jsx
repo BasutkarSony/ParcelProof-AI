@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { InspectionsReviewView, PackingStationView } from '../main.jsx'
+import { EvidenceTimeline, InspectionsReviewView, PackingStationView } from '../main.jsx'
 
 vi.mock('../style.css', () => ({ default: {} }))
 
@@ -136,5 +136,44 @@ describe('Human review correction loop', () => {
     )
 
     expect(await screen.findByText(/Replace the blue botanical design with the navy floral version/)).toBeInTheDocument()
+  })
+
+  it('keeps failed AI attempts out of the pending-review state and collapses history by default', () => {
+    render(
+      <EvidenceTimeline
+        shipment={order}
+        manifest={manifest}
+        inspection={{ inspection_status: 'AI_FAILED', photos: [] }}
+        inspectionRuns={[
+          {
+            inspection_id: 'failed-2',
+            inspection_status: 'AI_FAILED',
+            model_used: null,
+            photo_count: 1,
+            created_at: '2026-11-12T11:00:00Z',
+            latest_review: null,
+          },
+          {
+            inspection_id: 'approved-1',
+            inspection_status: 'APPROVED',
+            model_used: 'gemini-3.5-flash-lite',
+            photo_count: 1,
+            created_at: '2026-11-12T10:00:00Z',
+            latest_review: { decision: 'APPROVED', notes: 'Earlier attempt approved.', reviewer_label: 'Merchant' },
+          }
+        ]}
+      />
+    )
+
+    expect(screen.getByText('Merchant review unavailable')).toBeInTheDocument()
+    expect(screen.queryByText(/Merchant decision: approved/)).not.toBeInTheDocument()
+    expect(screen.getByText(/AI failed · Not reviewable/)).toBeInTheDocument()
+    expect(screen.getByText(/Merchant: APPROVED/)).toBeInTheDocument()
+    expect(screen.queryByText(/Awaiting merchant decision/)).not.toBeInTheDocument()
+
+    const history = screen.getByText('Previous inspection attempts').closest('details')
+    expect(history).not.toHaveAttribute('open')
+    fireEvent.click(screen.getByText('Previous inspection attempts'))
+    expect(history).toHaveAttribute('open')
   })
 })
