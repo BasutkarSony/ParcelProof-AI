@@ -3368,37 +3368,6 @@ export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmen
     return orders.find(o => o.order_id === activeShipmentId) || orders[0] || null
   }, [orders, activeShipmentId])
 
-  // Native browser form POSTs return with query-string feedback. Restore the
-  // shipment selection and show the result after the full-page redirect.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const shipmentId = params.get('shipment_id')
-    const knownShipment = shipmentId && orders.some(order => order.order_id === shipmentId)
-    if (shipmentId && knownShipment) setActiveShipmentId(shipmentId)
-
-    const formError = params.get('review_error')
-    const formStatus = params.get('review_status')
-    if (formError) {
-      setReviewError(formError)
-      setReviewNotesExpanded(true)
-    }
-    if (formStatus === 'APPROVED') setReviewFeedback('Approval saved for this packing check.')
-    if (formStatus === 'NEEDS_CORRECTION') {
-      setReviewFeedback('Correction saved. The shipment remains on hold until a new inspection is reviewed.')
-    }
-    if (formStatus === 'REJECTED') {
-      setReviewFeedback('Rejection saved. Resolve the packing issue before creating another inspection.')
-    }
-
-    const handled = !shipmentId || knownShipment
-    if (handled && (formError || formStatus || shipmentId)) {
-      for (const key of ['shipment_id', 'inspection_id', 'review_error', 'review_status']) params.delete(key)
-      const remaining = params.toString()
-      const nextUrl = window.location.pathname + (remaining ? `?${remaining}` : '') + window.location.hash
-      window.history.replaceState(window.history.state, '', nextUrl)
-    }
-  }, [orders, setActiveShipmentId])
-
   // Load manifest & inspections list whenever active shipment changes
   useEffect(() => {
     setReviewFeedback('')
@@ -3470,6 +3439,37 @@ export function InspectionsReviewView({ orders, setOrders, paypal, activeShipmen
       ignore = true
     }
   }, [selectedShipment?.order_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Native browser form POSTs return with query-string feedback. Restore the
+  // shipment selection and show the result after the full-page redirect.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const shipmentId = params.get('shipment_id')
+    const knownShipment = shipmentId && orders.some(order => order.order_id === shipmentId)
+    if (shipmentId && knownShipment) setActiveShipmentId(shipmentId)
+
+    const formError = params.get('review_error')
+    const formStatus = params.get('review_status')
+    if (formError) {
+      setReviewError(formError)
+      setReviewNotesExpanded(true)
+    }
+    if (formStatus === 'APPROVED') setReviewFeedback('Approval saved for this packing check.')
+    if (formStatus === 'NEEDS_CORRECTION') {
+      setReviewFeedback('Correction saved. The shipment remains on hold until a new inspection is reviewed.')
+    }
+    if (formStatus === 'REJECTED') {
+      setReviewFeedback('Rejection saved. Resolve the packing issue before creating another inspection.')
+    }
+
+    const handled = !shipmentId || knownShipment
+    if (handled && (formError || formStatus || shipmentId)) {
+      for (const key of ['shipment_id', 'inspection_id', 'review_error', 'review_status']) params.delete(key)
+      const remaining = params.toString()
+      const nextUrl = window.location.pathname + (remaining ? `?${remaining}` : '') + window.location.hash
+      window.history.replaceState(window.history.state, '', nextUrl)
+    }
+  }, [orders, setActiveShipmentId])
 
   // Fetch full inspection record whenever activeInspectionId changes
   useEffect(() => {

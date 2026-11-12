@@ -87,6 +87,7 @@ describe('Human review correction loop', () => {
   it('requires a reason before a correction can be submitted', async () => {
     renderReviewPage()
     expect(await screen.findByRole('heading', { name: 'Does this order look right?' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Your decision' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Needs fixing' }))
 
