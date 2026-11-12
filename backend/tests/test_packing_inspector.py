@@ -80,7 +80,7 @@ def _ai_result_fixture(item_ids: list[str] | None = None) -> dict:
     return {
         "image_quality": {
             "overall": "GOOD",
-            "photo_assessments": [{"photo_index": 0, "useful": True, "notes": "Clear photo"}],
+            "photo_assessments": [{"photo_index": 1, "useful": True, "notes": "Clear packing photo 1"}],
             "limitations": [],
         },
         "item_checks": [
@@ -91,8 +91,10 @@ def _ai_result_fixture(item_ids: list[str] | None = None) -> dict:
                 "expected_qty": 1,
                 "observed_qty": 1,
                 "result": "MATCH",
-                "visual_evidence": "Item visible in photo 1.",
+                "visual_evidence": "PACKING PHOTO 1 shows the expected shape and colour.",
                 "confidence": "HIGH",
+                "identity_assessment": "CONSISTENT",
+                "matched_features": ["shape", "colour"],
             }
             for iid in item_ids
         ],
@@ -157,7 +159,8 @@ class PromptConstructionTests(unittest.TestCase):
     def test_generic_description_does_not_allow_invented_product_requirements(self):
         prompt = self.pi._build_prompt(self.manifest)
         self.assertIn("Do not infer unlisted requirements", prompt)
-        self.assertIn("use result=UNCERTAIN rather than inventing a mismatch", prompt)
+        self.assertIn("A general object category", prompt)
+        self.assertIn("do not return result=MATCH", prompt)
 
 
     def test_reference_images_are_labelled_as_catalogue_context_not_packed_items(self):
@@ -171,11 +174,15 @@ class PromptConstructionTests(unittest.TestCase):
             "barcode_gtin": "4006381333931",
             "reference_image_status": "LOADED",
         }]
-        prompt = self.pi._build_prompt(self.manifest, reference_metas, product_context)
+        prompt = self.pi._build_prompt(self.manifest, reference_metas, product_context, photo_count=1)
         self.assertIn("Catalogue reference image 1 belongs to SKU NOTE-A5-003", prompt)
         self.assertIn("NOT items physically packed", prompt)
         self.assertIn("barcode was scanned", prompt)
-        self.assertIn("All remaining images are the actual packing photographs", prompt)
+        self.assertIn("The remaining supplied images are actual packing photos", prompt)
+        self.assertIn("PACKING PHOTO 1", prompt)
+        self.assertIn("do not use the combined provider image position", prompt)
+        self.assertIn("A general object category", prompt)
+        self.assertIn("at least two distinctive physical features", prompt)
 
 # ---------------------------------------------------------------------------
 # Packing inspector unit tests (no DB, no HTTP)
@@ -1422,6 +1429,37 @@ class GeminiResponseValidationTests(unittest.TestCase):
 
     def test_valid_result_passes(self):
         self._pi._validate_ai_result(self._valid_result(), self._manifest)
+
+    def test_generic_category_match_is_downgraded_to_uncertain(self):
+        result = self._valid_result()
+        result["item_checks"][0]["identity_assessment"] = "NOT_ASSESSABLE"
+        result["item_checks"][0]["matched_features"] = []
+        self._pi._validate_ai_result(result, self._manifest)
+        self._pi._apply_conservative_identity_rules(result)
+        check = result["item_checks"][0]
+        self.assertEqual(check["result"], "UNCERTAIN")
+        self.assertEqual(check["confidence"], "LOW")
+        self.assertTrue(result["additional_observations"]["uncertainty_notes"])
+
+    def test_match_without_two_distinctive_features_is_downgraded(self):
+        result = self._valid_result()
+        result["item_checks"][0]["matched_features"] = ["shape"]
+        self._pi._apply_conservative_identity_rules(result)
+        self.assertEqual(result["item_checks"][0]["result"], "UNCERTAIN")
+
+    def test_match_with_wrong_visible_quantity_is_downgraded(self):
+        result = self._valid_result()
+        result["item_checks"][0]["expected_qty"] = 2
+        result["item_checks"][0]["observed_qty"] = 1
+        self._pi._apply_conservative_identity_rules(result)
+        self.assertEqual(result["item_checks"][0]["result"], "POSSIBLE_MISSING")
+        self.assertEqual(result["item_checks"][0]["confidence"], "LOW")
+
+    def test_photo_assessment_cannot_reference_catalogue_image_position(self):
+        result = self._valid_result()
+        result["image_quality"]["photo_assessments"][0]["photo_index"] = 2
+        with self.assertRaises(RuntimeError):
+            self._pi._validate_ai_result(result, self._manifest, photo_count=1)
 
 
     def test_gemini_client_uses_bounded_timeout_and_disables_hidden_retries(self):

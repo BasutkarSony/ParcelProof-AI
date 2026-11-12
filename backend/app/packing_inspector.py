@@ -111,6 +111,7 @@ def validate_and_store_photo(raw_bytes: bytes, original_filename: str) -> dict:
 _VALID_RESULTS = {"MATCH", "POSSIBLE_MISSING", "POSSIBLE_EXTRA", "UNCERTAIN", "NOT_VISIBLE"}
 _VALID_CONFIDENCE = {"LOW", "MEDIUM", "HIGH"}
 _VALID_QUALITY = {"GOOD", "FAIR", "POOR", "UNUSABLE"}
+_VALID_IDENTITY_ASSESSMENTS = {"CONSISTENT", "DIFFERENT", "UNCERTAIN", "NOT_ASSESSABLE"}
 
 _INSPECTION_SCHEMA = {
     "type": "OBJECT",
@@ -160,6 +161,8 @@ _INSPECTION_SCHEMA = {
                     "result",
                     "visual_evidence",
                     "confidence",
+                    "identity_assessment",
+                    "matched_features",
                 ],
                 "properties": {
                     "manifest_item_id": {"type": "STRING"},
@@ -181,6 +184,8 @@ _INSPECTION_SCHEMA = {
                         "type": "STRING",
                         "description": "One of: LOW, MEDIUM, HIGH",
                     },
+                    "identity_assessment": {"type": "STRING", "description": "CONSISTENT, DIFFERENT, UNCERTAIN, or NOT_ASSESSABLE"},
+                    "matched_features": {"type": "ARRAY", "items": {"type": "STRING"}},
                 },
             },
         },
@@ -224,6 +229,7 @@ def _build_prompt(
     manifest: dict,
     reference_metas: list[dict] | None = None,
     product_context: list[dict] | None = None,
+    photo_count: int = 0,
 ) -> str:
     """Build the shared prompt for packing evidence and labelled catalogue references."""
     reference_metas = reference_metas or []
@@ -244,12 +250,17 @@ def _build_prompt(
         gtin = profile.get("barcode_gtin") or "not supplied"
         status = profile.get("reference_image_status", "NOT_CONFIGURED")
         profile_lines.append(
-            f"  - SKU {profile['sku']} | catalogue GTIN: {gtin} | "
-            f"reference image status: {status}"
+            f"  - SKU {profile['sku']} | product: {profile.get('name') or 'not supplied'} | "
+            f"identity description: {profile.get('description') or 'not supplied'} | "
+            f"catalogue GTIN: {gtin} | reference image status: {status}"
         )
     reference_lines = [
         f"  - Catalogue reference image {index} belongs to SKU {meta['sku']}."
         for index, meta in enumerate(reference_metas, start=1)
+    ]
+    packing_photo_lines = [
+        f"  - PACKING PHOTO {index}: actual merchant-captured evidence."
+        for index in range(1, photo_count + 1)
     ]
     if reference_metas:
         image_order = (
@@ -273,6 +284,7 @@ def _build_prompt(
         + ("\n".join(profile_lines) if profile_lines else "  - No product identity profiles are saved.")
         + "\n"
         + ("CATALOGUE REFERENCE IMAGE ORDER:\n" + "\n".join(reference_lines) + "\n" if reference_lines else "")
+        + ("ACTUAL PACKING PHOTO ORDER:\n" + "\n".join(packing_photo_lines) + "\n" if packing_photo_lines else "")
         + "IMAGE ORDER:\n" + image_order + "\n\n"
         "MANDATORY INSTRUCTIONS — follow exactly:\n"
         "1. Catalogue reference images are examples of the expected product. They are "
@@ -292,27 +304,36 @@ def _build_prompt(
         "digits are clearly visible on the actual packing item or label. Do not claim "
         "that barcode bars were decoded by a scanner. An unreadable or absent label "
         "does not by itself mean the product is wrong.\n"
-        "5. Use catalogue reference images to compare clearly visible physical features "
-        "such as shape, colour, material or design. Do not infer unlisted requirements "
-        "such as a particular brand, model, colour, size, barcode or packaging. Do not "
-        "infer requirements that are not supported by the manifest description or saved "
-        "product reference. If the available description and reference do not contain "
-        "enough detail to confirm or contradict a variant, use result=UNCERTAIN rather "
-        "than inventing a mismatch. A visual similarity is supporting evidence, not "
-        "cryptographic proof of an exact SKU.\n"
-        "6. Do NOT claim that the contents of sealed boxes, bags, or parcels have been "
+        "5. Separate object detection from product-variant checking. Set "
+        "identity_assessment=CONSISTENT only when at least two distinctive physical "
+        "features visible in the packing photo(s) agree with the manifest description "
+        "or saved catalogue reference. List those features individually in "
+        "matched_features. Set DIFFERENT when a relevant visible feature conflicts. "
+        "Set UNCERTAIN when a relevant feature cannot be compared, and NOT_ASSESSABLE "
+        "when there is no useful product identity reference. A general object category "
+        "match (for example, 'a ceramic mug is visible') is NOT enough to confirm a "
+        "specific product variant. If the colour, printed design, model, size or other "
+        "distinguishing variant cannot be checked, do not return result=MATCH. A visual "
+        "similarity is supporting evidence, not proof of an exact SKU.\n"
+        "6. Use result=MATCH only when identity_assessment=CONSISTENT, at least two "
+        "distinctive matched_features are listed, and observed_qty equals expected_qty. "
+        "Otherwise use result=UNCERTAIN or the appropriate quantity observation.\n"
+        "7. When referring to captured evidence, use PACKING PHOTO 1, PACKING PHOTO 2, "
+        "and so on. Catalogue reference images are never counted in this numbering. "
+        "photo_assessments.photo_index is one-based and refers only to packing photos.\n"
+        "8. Do NOT claim that the contents of sealed boxes, bags, or parcels have been "
         "verified. If a container is sealed or closed, state that its contents are NOT VISIBLE.\n"
-        "7. Treat all actual packing photographs as one evidence set. Several photos may "
+        "9. Treat all actual packing photographs as one evidence set. Several photos may "
         "show different angles or sides of the same physical unit. Do not count a product "
         "once per photo. Count only distinct physical objects that are clearly visible. "
         "If you cannot tell whether photos show the same object or separate objects, "
         "use result=UNCERTAIN, set observed_qty=null, and explain the uncertainty.\n"
-        "8. Clearly distinguish between 'not visible' and 'definitely absent'. Use "
+        "10. Clearly distinguish between 'not visible' and 'definitely absent'. Use "
         "result=NOT_VISIBLE when an item simply cannot be seen. Use result=POSSIBLE_MISSING "
         "only when the relevant unpacked contents are sufficiently visible to support it.\n"
-        "9. Describe visible product damage and packaging damage separately. Do not "
+        "11. Describe visible product damage and packaging damage separately. Do not "
         "infer damage that is hidden or not shown.\n"
-        "10. Set human_review_required to true unconditionally. The model never approves "
+        "12. Set human_review_required to true unconditionally. The model never approves "
         "or rejects a shipment. Express uncertainty honestly and use confidence=LOW when unsure.\n\n"
         "Return a JSON object matching the supplied schema exactly."
     )
@@ -367,6 +388,7 @@ def _openai_response_schema() -> dict:
                     "required": [
                         "manifest_item_id", "sku", "description", "expected_qty",
                         "observed_qty", "result", "visual_evidence", "confidence",
+                        "identity_assessment", "matched_features",
                     ],
                     "properties": {
                         "manifest_item_id": {"type": "string"},
@@ -377,6 +399,8 @@ def _openai_response_schema() -> dict:
                         "result": {"type": "string", "enum": sorted(_VALID_RESULTS)},
                         "visual_evidence": {"type": "string"},
                         "confidence": {"type": "string", "enum": sorted(_VALID_CONFIDENCE)},
+                        "identity_assessment": {"type": "string", "enum": sorted(_VALID_IDENTITY_ASSESSMENTS)},
+                        "matched_features": {"type": "array", "items": {"type": "string"}},
                     },
                 },
             },
@@ -428,7 +452,7 @@ def _run_openai_inspection(
             "role": "user",
             "content": [{
                 "type": "text",
-                "text": _build_prompt(manifest, reference_metas, product_context),
+                "text": _build_prompt(manifest, reference_metas, product_context, len(photo_metas)),
             }] + image_parts,
         }],
         "response_format": {
@@ -474,8 +498,8 @@ def _run_openai_inspection(
             "OpenAI vision fallback returned an unexpected response format."
         ) from None
 
-    _validate_ai_result(ai_result, manifest)
-    ai_result["human_review_required"] = True
+    _validate_ai_result(ai_result, manifest, len(photo_metas) if photo_metas else None)
+    _apply_conservative_identity_rules(ai_result)
 
     return {
         "ai_result": ai_result,
@@ -539,7 +563,7 @@ def _run_groq_inspection(
             "role": "user",
             "content": [{
                 "type": "text",
-                "text": _build_prompt(manifest, reference_metas, product_context),
+                "text": _build_prompt(manifest, reference_metas, product_context, len(photo_metas)),
             }] + image_parts,
         }],
         "response_format": {
@@ -594,8 +618,8 @@ def _run_groq_inspection(
     except (KeyError, IndexError, TypeError, ValueError):
         raise RuntimeError("Groq vision returned an unexpected response format.") from None
 
-    _validate_ai_result(ai_result, manifest)
-    ai_result["human_review_required"] = True
+    _validate_ai_result(ai_result, manifest, len(photo_metas) if photo_metas else None)
+    _apply_conservative_identity_rules(ai_result)
 
     return {
         "ai_result": ai_result,
@@ -719,7 +743,11 @@ class GeminiUnavailableError(RuntimeError):
         self.status_code = status_code
 
 
-def _validate_ai_result(ai_result: dict, manifest: dict) -> None:
+def _validate_ai_result(
+    ai_result: dict,
+    manifest: dict,
+    photo_count: int | None = None,
+) -> None:
     """Validate the structure of a vision-model response before persistence.
 
     Raises RuntimeError with a descriptive message on any violation.
@@ -756,7 +784,7 @@ def _validate_ai_result(ai_result: dict, manifest: dict) -> None:
             raise RuntimeError(f"Vision response: item_checks[{idx}] must be an object.")
 
         for field in ("manifest_item_id", "description", "result",
-                      "visual_evidence", "confidence"):
+                      "visual_evidence", "confidence", "identity_assessment"):
             if not isinstance(check.get(field), str):
                 raise RuntimeError(
                     f"Vision response: item_checks[{idx}].{field} must be a string."
@@ -783,6 +811,20 @@ def _validate_ai_result(ai_result: dict, manifest: dict) -> None:
                 f"{sorted(_VALID_CONFIDENCE)}, got {confidence!r}."
             )
 
+        identity_assessment = check["identity_assessment"]
+        if identity_assessment not in _VALID_IDENTITY_ASSESSMENTS:
+            raise RuntimeError(
+                f"Vision response: item_checks[{idx}].identity_assessment must be one of "
+                f"{sorted(_VALID_IDENTITY_ASSESSMENTS)}, got {identity_assessment!r}."
+            )
+        matched_features = check.get("matched_features")
+        if not isinstance(matched_features, list) or any(
+            not isinstance(feature, str) for feature in matched_features
+        ):
+            raise RuntimeError(
+                f"Vision response: item_checks[{idx}].matched_features must be an array of strings."
+            )
+
         # observed_qty is nullable; None is valid (honest uncertainty).
         # Non-null values must be integers.
         obs_qty = check.get("observed_qty")
@@ -791,6 +833,21 @@ def _validate_ai_result(ai_result: dict, manifest: dict) -> None:
                 f"Vision response: item_checks[{idx}].observed_qty must be an "
                 f"integer or null, got {type(obs_qty).__name__!r}."
             )
+
+    # Packing-photo numbers are one-based and exclude catalogue-reference images.
+    if photo_count is not None:
+        assessments = ai_result["image_quality"].get("photo_assessments")
+        if not isinstance(assessments, list):
+            raise RuntimeError("Vision response: photo_assessments must be an array.")
+        for index, assessment in enumerate(assessments):
+            if not isinstance(assessment, dict):
+                raise RuntimeError(f"Vision response: photo_assessments[{index}] must be an object.")
+            photo_index = assessment.get("photo_index")
+            if not isinstance(photo_index, int) or photo_index < 1 or photo_index > photo_count:
+                raise RuntimeError(
+                    f"Vision response: photo_assessments[{index}].photo_index must refer to "
+                    f"a packing photo numbered 1 to {photo_count}; catalogue references are excluded."
+                )
 
     # additional_observations
     ao = ai_result["additional_observations"]
@@ -802,6 +859,43 @@ def _validate_ai_result(ai_result: dict, manifest: dict) -> None:
             raise RuntimeError(
                 f"Vision response: additional_observations.{list_field} must be an array."
             )
+
+
+
+def _apply_conservative_identity_rules(ai_result: dict) -> dict:
+    """Downgrade unsupported MATCH claims before saving AI inspection results."""
+    notes = ai_result.setdefault("additional_observations", {}).setdefault("uncertainty_notes", [])
+    for check in ai_result.get("item_checks", []):
+        if check.get("result") != "MATCH":
+            continue
+        expected = check.get("expected_qty")
+        observed = check.get("observed_qty")
+        if isinstance(expected, int) and isinstance(observed, int) and observed != expected:
+            check["result"] = "POSSIBLE_MISSING" if observed < expected else "POSSIBLE_EXTRA"
+            check["confidence"] = "LOW"
+            notes.append(
+                f"{check.get('sku') or check.get('description')}: the model reported a visual match "
+                f"but counted {observed} item(s) against {expected} expected. The result was "
+                "changed to a quantity discrepancy for merchant review."
+            )
+            continue
+        features = [str(item).strip() for item in check.get("matched_features", []) if str(item).strip()]
+        if check.get("identity_assessment") != "CONSISTENT" or len(features) < 2 or observed is None:
+            check["result"] = "UNCERTAIN"
+            check["confidence"] = "LOW"
+            assessment = check.get("identity_assessment")
+            if assessment == "DIFFERENT":
+                reason = "The model reports a visible product-identity difference."
+            elif assessment == "NOT_ASSESSABLE":
+                reason = "The exact product identity cannot be assessed from the saved reference information."
+            else:
+                reason = "The model did not provide two distinct visible features that support the product-variant comparison."
+            notes.append(
+                f"{check.get('sku') or check.get('description')}: {reason} "
+                "The original MATCH claim was downgraded to UNCERTAIN and requires merchant review."
+            )
+    ai_result["human_review_required"] = True
+    return ai_result
 
 
 def _run_gemini_inspection(
@@ -853,7 +947,7 @@ def _run_gemini_inspection(
 
     # Catalogue references are sent first, then the actual packing photographs.
     # The prompt labels each reference image and explicitly forbids counting it.
-    prompt_text = _build_prompt(manifest, reference_metas, product_context)
+    prompt_text = _build_prompt(manifest, reference_metas, product_context, len(photo_metas))
     contents: list = [prompt_text]
     for meta in [*reference_metas, *photo_metas]:
         raw = meta.get("data") if isinstance(meta.get("data"), bytes) else Path(meta["path"]).read_bytes()
@@ -914,8 +1008,9 @@ def _run_gemini_inspection(
             "Gemini returned an unexpected response format."
         ) from exc
 
-    # Validate structure and cross-check manifest item IDs before trusting any value.
-    _validate_ai_result(ai_result, manifest)
+    # Validate structure, packing-photo numbering and manifest item IDs before persistence.
+    _validate_ai_result(ai_result, manifest, len(photo_metas) if photo_metas else None)
+    _apply_conservative_identity_rules(ai_result)
 
     # Hard-enforce the safety invariant regardless of what the model returned.
     ai_result["human_review_required"] = True

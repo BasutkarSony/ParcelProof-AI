@@ -1544,6 +1544,8 @@ async def create_packing_inspection(
         if profile is None:
             product_reference_context.append({
                 "sku": sku,
+                "name": None,
+                "description": None,
                 "barcode_gtin": None,
                 "reference_image_status": "NO_PROFILE",
             })
@@ -1551,6 +1553,8 @@ async def create_packing_inspection(
 
         context = {
             "sku": sku,
+            "name": profile.get("name"),
+            "description": profile.get("description"),
             "barcode_gtin": profile.get("barcode_gtin"),
             "reference_image_status": "NOT_CONFIGURED",
         }
