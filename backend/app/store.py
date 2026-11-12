@@ -669,6 +669,38 @@ def list_orders() -> list[dict]:
         conn.close()
 
 
+def get_order_item_summaries(order_ids: list[str]) -> dict[str, list[dict]]:
+    """Return original product names and quantities for multiple checkout orders."""
+    normalized_ids = list(dict.fromkeys(
+        str(order_id).strip() for order_id in (order_ids or []) if str(order_id).strip()
+    ))
+    if not normalized_ids:
+        return {}
+
+    placeholders = ", ".join("?" for _ in normalized_ids)
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT order_id, product_sku, product_name, quantity
+            FROM order_items
+            WHERE order_id IN ({placeholders})
+            ORDER BY order_id, item_position, id
+            """,
+            tuple(normalized_ids),
+        ).fetchall()
+        summaries: dict[str, list[dict]] = {order_id: [] for order_id in normalized_ids}
+        for row in rows:
+            summaries[row["order_id"]].append({
+                "sku": row["product_sku"],
+                "name": row["product_name"],
+                "quantity": row["quantity"],
+            })
+        return summaries
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Shipment manifest persistence
 # These tables are completely separate from checkout orders and order_items.

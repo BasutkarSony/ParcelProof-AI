@@ -5781,3 +5781,44 @@ button { min-height: 38px; }
   .manifest-table td::before { content: attr(data-label); color: var(--text-subtle); font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .manifest-table td[data-label="What was visible"] { grid-column: 1 / -1; }
 }
+
+
+/* Orders shows the purchased products, not just an order ID and amount. */
+.merchant-order-payment {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #edf6f1;
+  color: #176743;
+  font-size: 10px;
+  font-weight: 800;
+}
+.merchant-order-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.merchant-order-items li {
+  color: var(--text-main);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.merchant-order-items li strong { font-weight: 650; }
+.merchant-order-items .merchant-order-more {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.merchant-order-items-missing {
+  margin-top: 10px;
+  color: var(--text-subtle);
+  font-size: 11px;
+  line-height: 1.45;
+}
+@media (max-width: 680px) {
+  .merchant-order-items { display: grid; gap: 5px; }
+  .merchant-order-payment { width: fit-content; }
+}

@@ -44,6 +44,7 @@ from app.store import (
     update_product_identity_profile,
     create_order,
     get_order,
+    get_order_item_summaries,
     list_orders as store_list_orders,
     set_paypal_order_id,
     set_capture,
@@ -279,10 +280,21 @@ def list_orders():
     with DATA_FILE.open("r", encoding="utf-8-sig") as file:
         sample_orders = json.load(file)
 
-    # Load persistent shipments created from PayPal checkout payments
+    # Load persistent shipments created only after PayPal capture was verified.
     persistent_shipments = list_shipments()
+    order_item_summaries = get_order_item_summaries([
+        shipment.get("checkout_order_id")
+        for shipment in persistent_shipments
+        if shipment.get("checkout_order_id")
+    ])
+    for shipment in persistent_shipments:
+        checkout_order_id = shipment.get("checkout_order_id")
+        shipment["items"] = order_item_summaries.get(checkout_order_id, [])
+        shipment["payment_status"] = (
+            "PAID" if shipment.get("paypal_capture_id") else "PAYMENT_REFERENCE_MISSING"
+        )
 
-    # Combine persistent shipments with sample orders (persistent shipments first)
+    # Keep sample records separate from actual captured checkout orders.
     combined = list(persistent_shipments) + sample_orders
     return {"orders": combined}
 

@@ -1846,46 +1846,29 @@ function ShipmentReviewMain({
     setOpeningOrderId(order.order_id)
     setOpenError('')
 
+    // Dispatched orders belong in the evidence record. Unshipped orders need only
+    // one manifest check; inspection history is loaded inside the packing workflow.
+    if (order.status === 'SHIPPED' || order.status === 'DELIVERED') {
+      navigateTo('/inspections', { shipmentId: order.order_id })
+      return
+    }
+
     try {
-      const manifestResponse = await fetch(
+      const response = await fetch(
         `${API_BASE}/api/shipments/${encodeURIComponent(order.order_id)}/manifest`
       )
-
-      if (manifestResponse.status === 404) {
+      if (response.status === 404) {
         navigateTo('/manifests', { shipmentId: order.order_id })
         return
       }
-
-      const manifestData = await readApiJson(manifestResponse)
-      if (!manifestResponse.ok) {
-        throw new Error(manifestData.detail || 'Could not open this order.')
-      }
-
-      if (manifestData.status !== 'FINALIZED') {
-        navigateTo('/manifests', { shipmentId: order.order_id })
-        return
-      }
-
-      const inspectionsResponse = await fetch(
-        `${API_BASE}/api/manifests/${encodeURIComponent(manifestData.id)}/inspections`
+      const manifest = await readApiJson(response)
+      if (!response.ok) throw new Error(manifest.detail || 'Could not open this order.')
+      navigateTo(
+        manifest.status === 'FINALIZED' ? '/packing' : '/manifests',
+        { shipmentId: order.order_id }
       )
-      const inspectionsData = await readApiJson(inspectionsResponse)
-      if (!inspectionsResponse.ok) {
-        throw new Error(inspectionsData.detail || 'Could not load this order’s packing checks.')
-      }
-
-      const latest = inspectionsData.inspections?.[0]
-      const status = latest?.inspection_status
-      const nextPath = status === 'PENDING_HUMAN_REVIEW' ||
-        status === 'APPROVED' ||
-        status === 'REJECTED'
-          ? '/inspections'
-          : '/packing'
-
-      navigateTo(nextPath, { shipmentId: order.order_id })
     } catch (requestError) {
       setOpenError(requestError.message || 'Could not open this order. Please try again.')
-    } finally {
       setOpeningOrderId('')
     }
   }
@@ -1921,13 +1904,10 @@ function ShipmentReviewMain({
 
       <section className="merchant-orders-heading">
         <div>
-          <div className="eyebrow">PAYPAL ORDERS</div>
+          <div className="eyebrow">PAID ORDERS</div>
           <h1>What needs packing?</h1>
-          <p>Choose an order. ParcelProof will take you to the next step.</p>
+          <p>See what each buyer paid for and continue with the next packing step.</p>
         </div>
-        <button className="btn-primary" onClick={() => navigateTo('/checkout')}>
-          Create test order
-        </button>
       </section>
 
       {error && <div className="findings-box issues" role="alert">{error}</div>}
@@ -1962,18 +1942,35 @@ function ShipmentReviewMain({
                     <span className={`merchant-order-status ${order.status === 'DELIVERED' ? 'complete' : order.status === 'SHIPPED' ? 'shipped' : 'pending'}`}>
                       {orderStatus}
                     </span>
+                    {order.payment_status === 'PAID' && (
+                      <span className="merchant-order-payment">PayPal payment received</span>
+                    )}
                   </div>
                   <div className="merchant-order-meta">
-                    <span>{order.buyer_name || 'PayPal customer'}</span>
-                    <span>{order.amount ? `$${Number(order.amount).toFixed(2)} ${order.currency || 'USD'}` : 'Paid order'}</span>
+                    <span>{order.buyer_name || 'Buyer name unavailable'}</span>
+                    <span>{order.amount ? `$${Number(order.amount).toFixed(2)} ${order.currency || 'USD'}` : 'Order total unavailable'}</span>
                   </div>
+                  {order.items?.length ? (
+                    <ul className="merchant-order-items" aria-label="Products in this order">
+                      {order.items.slice(0, 3).map((item, index) => (
+                        <li key={item.sku || index}>
+                          <strong>{item.quantity} × {item.name || item.sku || 'Order item'}</strong>
+                        </li>
+                      ))}
+                      {order.items.length > 3 && (
+                        <li className="merchant-order-more">+ {order.items.length - 3} more items</li>
+                      )}
+                    </ul>
+                  ) : (
+                    <p className="merchant-order-items-missing">Item details will appear when you open this order.</p>
+                  )}
                 </div>
                 <button
                   className="btn-primary merchant-order-action"
                   onClick={() => continueOrder(order)}
                   disabled={Boolean(openingOrderId)}
                 >
-                  {isOpening ? 'Opening…' : order.status === 'DELIVERED' || order.status === 'SHIPPED' ? 'View order' : 'Continue order'}
+                  {isOpening ? 'Opening…' : order.status === 'DELIVERED' || order.status === 'SHIPPED' ? 'View evidence' : 'Start packing'}
                   {!isOpening && <ArrowIcon />}
                 </button>
               </article>

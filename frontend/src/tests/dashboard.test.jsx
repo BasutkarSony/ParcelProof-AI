@@ -15,6 +15,9 @@ const mockOrders = [
     currency: 'USD',
     transaction_id: 'CAPTURE-1001',
     paypal_capture_id: 'CAPTURE-1001',
+    payment_status: 'PAID',
+    buyer_name: 'Demo Buyer',
+    items: [{ sku: 'MUG-CER-001', name: 'Ceramic Coffee Mug', quantity: 1 }],
   },
   {
     order_id: 'ORD-1001',
@@ -61,7 +64,11 @@ describe('Dashboard', () => {
     expect(await screen.findByRole('heading', { name: 'What needs packing?' })).toBeInTheDocument()
     expect(screen.getByText('SHP-1001')).toBeInTheDocument()
     expect(screen.getByText('Not dispatched')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue order' })).toBeInTheDocument()
+    expect(screen.getByText('Demo Buyer')).toBeInTheDocument()
+    expect(screen.getByText('PayPal payment received')).toBeInTheDocument()
+    expect(screen.getByText('1 × Ceramic Coffee Mug')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start packing' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Create test order' })).not.toBeInTheDocument()
     expect(screen.queryByText('ORD-1001')).not.toBeInTheDocument()
     expect(screen.queryByText('Sample records')).not.toBeInTheDocument()
     expect(screen.queryByText('PACKING PHOTOS')).not.toBeInTheDocument()

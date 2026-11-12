@@ -187,6 +187,25 @@ class StoreTests(unittest.TestCase):
         # 3 * 14.00 + 1 * 18.00 = 60.00
         self.assertEqual(Decimal(fetched["total"]), Decimal("60.00"))
 
+    def test_order_item_summaries_return_names_and_quantities_for_multiple_orders(self):
+        first = create_order([
+            {"sku": "MUG-CER-001", "quantity": 1},
+            {"sku": "NOTE-A5-003", "quantity": 2},
+        ])
+        second = create_order([{"sku": "TOTE-COT-002", "quantity": 3}])
+
+        summaries = store.get_order_item_summaries([first["id"], second["id"]])
+
+        self.assertEqual(
+            [(item["name"], item["quantity"]) for item in summaries[first["id"]]],
+            [("Ceramic Coffee Mug", 1), ("A5 Hardcover Notebook", 2)],
+        )
+        self.assertEqual(
+            [(item["name"], item["quantity"]) for item in summaries[second["id"]]],
+            [("Cotton Canvas Tote Bag", 3)],
+        )
+        self.assertEqual(store.get_order_item_summaries([]), {})
+
     def test_get_order_unknown_id_returns_none(self):
         self.assertIsNone(get_order("00000000-0000-0000-0000-000000000000"))
 
