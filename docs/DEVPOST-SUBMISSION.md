@@ -1,110 +1,89 @@
-# Devpost submission — ParcelProof AI
+# ParcelProof AI — Devpost submission notes
 
-Use the copy below as the basis for the PayPal AI Hackathon form. Add the public YouTube URL after the final recording is uploaded.
+Use this document as the source for the Devpost form. The Devpost management page requires the account owner's sign-in, so paste the content into the existing submission yourself.
 
-## Project name
+## Project
 
-ParcelProof AI
+**Project name:** ParcelProof AI
 
-## Tagline
+**Tagline:** Check the pack against what the buyer paid for.
 
-Check the pack against what the buyer paid for.
-
-## Short description
-
-ParcelProof AI connects a verified PayPal Sandbox payment to the exact items a merchant needs to pack. Before sealing the parcel, the merchant photographs the visible goods, Gemini compares them with the order-derived manifest and saved product reference, and the merchant records the final packing decision. Each inspection remains linked to the manifest and its photo evidence.
+**Short description:** ParcelProof links a PayPal-paid order to its packing list, compares a pre-seal photo with the declared products and saved identity references, and records the merchant’s final decision.
 
 ## Project description
 
-### The problem
+For a small online merchant, a successful payment does not guarantee that the right product or quantity will be packed. Picking and packing can happen away from the original order record, and a wrong variant or missing item may only be noticed after dispatch.
 
-Small online merchants and owner-operated shops often fulfil physical orders by manually picking, checking and packing products. The payment record, item list and packing check can be separate from the photograph or note taken before sealing. A wrong variant or missing item may only be discovered after dispatch, when the merchant has to reconstruct what was paid for and what was checked.
+ParcelProof AI focuses on one practical moment: checking the visible contents against the paid order before the parcel is sealed.
 
-ParcelProof focuses on one specific intervention: checking the visible goods against the paid order before the parcel is sealed.
+A buyer completes checkout through PayPal Sandbox. The backend verifies the completed PayPal order and capture, including amount and currency. The paid order lines become the source for a shipment and packing manifest. The merchant confirms the product names and quantities, then finalizes the manifest to create a SHA-256 fingerprint.
 
-The initial target user is a small online merchant or a small fulfilment team that manually packs physical orders. This is an initial product hypothesis, not a claim based on a completed customer study.
+Before sealing, the merchant uploads a packing photo. Google Gemini Vision compares the visible evidence with the finalized manifest and the merchant’s saved product identity description and reference image. The AI returns structured observations; it does not approve or reject the shipment. New match results are treated conservatively: the model must explicitly assess identity as consistent, identify at least two visible matching features and report the expected quantity. Unsupported identity claims are downgraded to uncertain.
 
-### What ParcelProof does
+The merchant reviews the original photo beside the saved catalogue reference and makes the decision. They can approve, reject, or request a correction with an explanation. A correction keeps the shipment on hold. The exact reason is shown again when the merchant returns to the Packing Station, where a corrected photo creates a new inspection attempt against the same finalized manifest. Earlier inspection records and merchant decisions remain in the history.
 
-1. A buyer checks out through PayPal Sandbox.
-2. The backend verifies the completed PayPal order and capture, including amount and currency.
-3. The purchased order lines and quantities create a shipment-linked packing manifest.
-4. The merchant reviews and finalizes the manifest. Its declared contents receive a SHA-256 fingerprint.
-5. Before sealing, the merchant uploads a clear overview photograph of the packed items.
-6. Gemini Vision compares the visible goods with the finalized manifest and the saved product identity profile, returning structured observations.
-7. The merchant reviews the original photo, the saved catalogue reference and the AI observations, then records APPROVE, NEEDS_CORRECTION or REJECT. AI never makes the final shipment decision.
+ParcelProof keeps an application-level evidence trail linking the PayPal capture reference, declared order contents, manifest fingerprint, stored packing-photo digests, AI observation and separate human decision. It is not a blockchain and does not prove what is inside a sealed parcel.
 
-Product setup separates the short description shown to a buyer from the private product identity details used for packing checks. One saved reference photo can be reused for future orders of the same SKU.
+## Why PayPal is central
 
-### Why PayPal matters
+PayPal is the source of the paid checkout order, not just an unrelated payment button. ParcelProof verifies the PayPal Sandbox capture and uses the original purchased line items and quantities as the packing manifest. Without that verified paid order, the application has no order-derived packing list to compare with the photograph.
 
-PayPal is central to the workflow. The verified Sandbox payment and purchased order lines supply the source of truth for the packing manifest. The manifest is derived from the items the buyer paid for. The order and capture references remain linked to the shipment and its evidence record.
+## Tools and how they are used
 
-### How AI is used
+- **PayPal Developer Platform — Orders v2 Sandbox:** buyer checkout, order approval and capture. The backend verifies the captured amount and currency before creating the shipment.
+- **Google Gemini Vision:** multimodal comparison of the packing photo, finalized manifest and saved product identity context. AI output remains advisory and requires merchant review.
+- **Python and FastAPI:** PayPal verification, order-to-manifest creation, photo validation, inspection, evidence records and human-review endpoints.
+- **React and Vite:** merchant Orders, Packing Station, inspection review and product catalogue screens.
+- **Supabase Postgres and private Storage:** hosted records and private evidence files.
+- **Render:** hosted demo deployment.
 
-The hosted prototype uses Google Gemini Vision, model gemini-3.5-flash-lite, to inspect packing photographs against the order-derived manifest and saved product identity context. The model returns observations such as MATCH, POSSIBLE_MISSING, POSSIBLE_EXTRA or UNCERTAIN, with confidence and visible evidence.
+## Demo and source
 
-AI output is fallible and does not approve or reject a shipment. The merchant must review the photographs and make a separate decision.
+**Hosted demo:** https://parcelproof-ai-058h.onrender.com
 
-The current demo includes an important example: Gemini returned MATCH for a photographed ceramic mug and the expected quantity. The merchant compared the photo with the saved catalogue design and recorded NEEDS_CORRECTION because the exact product variant was not verified. The shipment remained on hold. The example shows why the AI result and the human decision are stored separately.
+**Public repository:** https://github.com/BasutkarSony/ParcelProof-AI
 
-### Evidence and traceability
+**Demo walkthrough:** docs/DEMO-SCRIPT.md
 
-ParcelProof stores:
-- the finalized manifest's SHA-256 fingerprint;
-- SHA-256 digests and records for uploaded packing photographs;
-- the AI inspection output and model used;
-- a separate merchant-review decision linked to that inspection.
-
-This is a traceable application evidence record. It is not a blockchain, does not establish the contents of a sealed package and does not prove carrier dispatch or delivery.
-
-### Potential impact
-
-The intended benefit is to help a merchant notice visible wrong-item, missing-item or quantity discrepancies before dispatch, and to preserve a consistent record of what was ordered, photographed and reviewed. The project has not yet measured error reduction, return reduction or time savings with real merchants.
-
-### What makes the approach useful
-
-The workflow starts with the paid PayPal order, not an independent checklist. That links the buyer's purchased items to the merchant's packing check. AI provides a second look at visible evidence, while the merchant retains control over the decision. A correction request keeps the shipment on hold.
-
-### Tools and technologies
-
-- PayPal Developer Platform — PayPal Orders v2 Sandbox checkout and capture.
-- Google Gemini API — multimodal packing-photo inspection and structured observations.
-- Python and FastAPI — backend payment verification, manifest, inspection and review services.
-- React and Vite — web interface.
-- Supabase Postgres and private Storage — hosted records and evidence files.
-- Render — hosted demo.
-
-### What we learned / next steps
-
-The prototype demonstrated that the payment, manifest, photo, AI result and human decision can be tied together. It also exposed an important limitation: a model can identify the general object and quantity while missing a design or variant difference. Better product-identity comparison, simpler correction capture, merchant usability testing and carrier-event integration are future work.
-
-## Submission links
-
-- Live demo: https://parcelproof-ai-058h.onrender.com
-- Public source repository: https://github.com/BasutkarSony/ParcelProof-AI
-- License: MIT (repository includes LICENSE)
-- Demo video: **Add the public YouTube URL after recording.**
+**License:** MIT (LICENSE at the repository root).
 
 ## Judge testing instructions
 
-The hosted demo opens at a branded merchant sign-in screen. Use the shared demo credentials:
-- Username: `merchant.demo`
-- Password: `PackSafe#2026`
+The hosted demo uses synthetic data and PayPal Sandbox. Do not enter real customer or payment information.
 
-This is one shared demonstration account, not separate merchant accounts. Successful sign-in creates a 12-hour HttpOnly browser session.
+- Open the hosted demo and sign in with the shared demo account:
+  - Username: `merchant.demo`
+  - Password: `PackSafe#2026`
+- Open **Orders**, select an existing paid demonstration order, and inspect its purchased products and quantities.
+- Continue to the manifest and Packing Station; review the saved inspection and merchant decision.
+- The existing saved mug example demonstrates that a merchant can request correction even when the AI observation says MATCH.
+- The **Test checkout** tool is separate. A fresh checkout requires a PayPal Sandbox buyer account; do not use a live PayPal account.
+- The Render Free service may need to wake after inactivity.
 
-Judges can use the existing synthetic demonstration order to inspect the order, finalized manifest, packing inspection, original photo and saved human decision. A new checkout is optional. If testing a fresh payment, use a PayPal Sandbox buyer account only; never use a live PayPal account.
+Local setup and test commands are in README.md.
 
-The hosted service uses Render's Free plan and may take time to wake after inactivity. The demo uses synthetic records. Do not enter real customer or payment information.
+## Limitations to disclose
 
-## Accuracy and limitations to retain in the submission
+- PayPal processing is Sandbox, not production payments.
+- AI compares visible features; it cannot prove an exact SKU from visual similarity alone or see inside a sealed parcel.
+- A merchant makes the final decision.
+- The hosted demo uses one shared merchant login, not individual merchant accounts or tenant isolation.
+- Carrier event feeds and independent proof of dispatch/delivery are not implemented.
+- PayPal tracking writes are disabled in the hosted demo.
+- The prototype does not calculate Seller Protection eligibility or guarantee a dispute outcome.
+- No measured reduction in packing errors, returns or support costs has been collected. The small-merchant target profile is a product hypothesis, not validated interview evidence.
 
-- PayPal integration is Sandbox, not production.
-- AI suggestions are not guaranteed to be correct and require a human decision.
-- A packing photo cannot verify the contents of a sealed parcel.
-- Product similarity is not proof of an exact SKU or variant.
-- No carrier event feed is connected.
-- PayPal tracking writes remain disabled.
-- ParcelProof does not calculate or guarantee PayPal Seller Protection eligibility.
-- The prototype has one shared demo login, not individual merchant accounts or role-based tenant separation.
+## Video
+
+**YouTube URL:** PASTE THE PUBLIC YOUTUBE VIDEO URL AFTER UPLOADING.
+
+The video must be publicly visible and under three minutes. Use the real hosted app, show the working order-to-packing flow, and avoid copyrighted music or unlicensed third-party material.
+
+## Final checks before clicking Submit
+
+- Confirm the existing Devpost project title is **ParcelProof AI**, not the older ShipProof AI name in the historical setup note.
+- Confirm its repository field points to https://github.com/BasutkarSony/ParcelProof-AI.
+- Confirm the live demo URL and judge login instructions work.
+- List the PayPal and AI tools and explain their actual use.
+- Upload the under-three-minute YouTube video and paste its public URL.
+- Complete every required Devpost field and click the final **Submit** action before the deadline. Saving a draft is not the same as submitting it.

@@ -4,7 +4,7 @@
 
 ParcelProof AI is a PayPal-connected packing check for small online merchants who prepare physical orders themselves. It links a completed PayPal payment to the items to be packed, compares a pre-seal photo with the order and saved product reference, and lets the merchant record the final decision.
 
-**[Open the live demo](https://parcelproof-ai-058h.onrender.com)** · **[View the source code](https://github.com/BasutkarSony/ParcelProof-AI)** · **[Read the demo script](docs/DEMO-SCRIPT.md)**
+**[Open the live demo](https://parcelproof-ai-058h.onrender.com)** · **[View the source code](https://github.com/BasutkarSony/ParcelProof-AI)** · **[Read the demo script](docs/DEMO-SCRIPT.md)** · **[Devpost submission notes](docs/DEVPOST-SUBMISSION.md)**
 
 The hosted demo opens at a branded merchant sign-in screen. It uses PayPal Sandbox and synthetic demonstration records. Do not enter real customer or payment data.
 
