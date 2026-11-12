@@ -1,29 +1,29 @@
-# ParcelProof AI — 2:50 demonstration video
+# ParcelProof AI — 2:35 demonstration video
 
-**One-line story:** PayPal confirms what the buyer paid for; ParcelProof helps the merchant check what is about to be packed.
+**One-line story:** PayPal confirms what the buyer paid for; ParcelProof helps the merchant review what is about to be packed.
 
-Target runtime: **2 minutes 50 seconds**. Record the real hosted application in a desktop browser. Use the existing synthetic demonstration order and its saved inspection; do not create extra test data solely for the video.
+Target runtime: **about 2 minutes 35 seconds**, and always under three minutes. Record the real hosted application in a desktop browser. Use the existing synthetic demonstration order and its saved packing photo, inspection and merchant decision. This is a walkthrough of a prepared Sandbox example, not a newly created checkout.
 
 | Time | Show | Narration |
 |---|---|---|
-| 0:00–0:12 | Open the live app on the Orders page. | “A PayPal payment confirms an order, but it does not confirm that the correct product and quantity are going into the parcel. ParcelProof adds a packing check before sealing.” |
-| 0:12–0:36 | Show one paid order card with buyer, PayPal payment received, order total, product name and quantity. | “This order was paid through PayPal Sandbox. The captured order supplies the exact product lines and quantities ParcelProof uses for packing.” |
-| 0:36–0:55 | Open the order and show the confirmed manifest and SHA-256 fingerprint. | “The merchant checks the order items and confirms the packing list. Its fingerprint gives later inspections a fixed reference for what was declared.” |
-| 0:55–1:12 | Show the private catalogue identity description and saved reference image. | “The buyer sees short shop copy. The merchant can save the product’s distinguishing details and reference photo once, then reuse them for packing checks.” |
-| 1:12–1:42 | Show the existing original packing photo, AI observation, model and timing. | “Gemini compares what is visible in the pre-seal photo with the paid-order manifest and saved product reference. It separates object detection from variant assessment. The AI does not make the final decision.” |
-| 1:42–2:10 | Show the catalogue reference next to the packing photo. Record or show the merchant selecting Needs fixing and entering a short explanation. | “Here, the merchant cannot confirm the exact product variant from the photo. They request a correction and explain what needs to change. The shipment remains on hold.” |
-| 2:10–2:32 | Return to Packing. Show the saved merchant note, the unchanged manifest reference, and the action to replace the item and take a new photo. | “When the merchant returns to packing, the exact correction note is visible beside the next step. The original paid order and finalized manifest are preserved; a corrected photo creates a new inspection attempt.” |
-| 2:32–2:50 | Show inspection history, manifest fingerprint and photo SHA-256 details. End on the product name. | “ParcelProof links the PayPal capture, declared items, original packing evidence, AI observation and separate merchant decision. It is an application evidence trail—not proof of sealed contents or carrier delivery.” |
+| 0:00–0:15 | Open the hosted app on **Orders**. Show the paid demonstration order. | “A PayPal payment confirms what the buyer ordered. It does not confirm that the correct product and quantity are on the packing table. ParcelProof adds a review before the parcel is sealed.” |
+| 0:15–0:35 | Show the existing paid order, its product line and quantity. | “This is a prepared PayPal Sandbox order. ParcelProof verifies the completed order and capture, including the amount and currency, before using its purchased items as the packing reference.” |
+| 0:35–0:55 | Open the order's confirmed manifest. Show its finalized state and SHA-256 fingerprint. | “The merchant checks the order-derived packing list. Finalizing it creates a fingerprint for the contents the merchant declared.” |
+| 0:55–1:10 | Show one saved product reference image and its private identity details. Keep this brief. | “The product catalogue can hold a reference photo and distinguishing details for reuse. These help the reviewer compare the packed item with the expected product.” |
+| 1:10–1:40 | Show the saved packing photo beside the AI result. Show the actual observation and model information. | “Gemini reviewed this pre-seal photograph. In this example it recognized the visible mug and quantity, but it did not establish the exact catalogue design or variant. The AI result is an observation, not an approval.” |
+| 1:40–2:10 | Show the saved merchant **NEEDS_CORRECTION** decision and its note. Show the shipment hold state if visible. | “The merchant reviewed the same evidence and chose Needs correction because the exact design could not be confirmed. The shipment remains on hold. This is the recorded human decision; the AI did not identify the variant mismatch on its own.” |
+| 2:10–2:35 | Show the inspection history and the linked manifest and photo evidence details. End on the product name. | “ParcelProof connects the PayPal capture, declared items, packing photo, AI observation and merchant decision in an application evidence trail. This prototype does not prove the contents of a sealed parcel or independently verify carrier delivery.” |
 
 ## Recording checklist
 
-- Use the actual hosted app and existing synthetic demonstration order/inspection.
-- Keep the video **under three minutes**.
-- Show the purchased items on the Orders card, not just the order ID and amount.
-- Show the saved product reference and the original packing photograph together.
-- Show that the merchant supplies a reason for a correction and that the note appears again in Packing.
-- Do not say the AI detected the variant mismatch when the merchant actually identified the uncertainty.
-- Do not claim that a photo proves the contents of a sealed parcel.
+- Sign in before starting the screen recording. Warm the hosted demo first; the Render Free service may take time to wake after inactivity.
+- Start from **Orders** and use the existing synthetic paid order. Do not start from an empty test-checkout cart.
+- Use the saved packing photo, inspection and recorded merchant decision from the verified QA example.
+- Keep the final video **under three minutes**.
+- Show the product line and quantity, finalized manifest, saved reference photo, actual AI observation and separate merchant decision.
+- Describe the variant as **not verified by the AI**. Do not say the AI detected a variant mismatch; the merchant made that judgement.
+- Do not imply a corrected replacement photo or a successful second inspection exists. That follow-up cycle has not yet been demonstrated.
+- Do not claim a photo proves the contents of a sealed parcel.
 - Do not claim live payments, carrier events, PayPal tracking submission, Seller Protection eligibility or a guaranteed dispute outcome.
 - Do not show passwords, API keys, buyer credentials, personal data or private dashboard information.
 - Use your own narration or silence. Do not add copyrighted music or unlicensed third-party material.
