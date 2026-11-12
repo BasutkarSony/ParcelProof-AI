@@ -16,7 +16,7 @@ For a small online merchant, a successful payment does not guarantee that the ri
 
 ParcelProof AI focuses on one practical moment: checking the visible contents against the paid order before the parcel is sealed.
 
-A buyer completes checkout through PayPal Sandbox. The backend verifies the completed PayPal order and capture, including amount and currency. The paid order lines become the source for a shipment and packing manifest. The merchant confirms the product names and quantities, then finalizes the manifest to create a SHA-256 fingerprint.
+A buyer completes checkout through PayPal Sandbox. The backend verifies the completed PayPal order and capture, including amount and currency. The paid order lines become the source for a shipment and packing manifest. The merchant sees the product names and quantities from the original paid order, confirms the list, then finalizes the manifest to create a SHA-256 fingerprint. The packing screen keeps private AI comparison notes out of the order-item list. Extra product-matching notes and barcode numbers are optional; barcode numbers are entered manually and validated, not scanned.
 
 Before sealing, the merchant uploads a packing photo. Google Gemini Vision compares the visible evidence with the finalized manifest and the merchant’s saved product identity description and reference image. The AI returns structured observations; it does not approve or reject the shipment. New match results are treated conservatively: the model must explicitly assess identity as consistent, identify at least two visible matching features and report the expected quantity. Unsupported identity claims are downgraded to uncertain.
 
@@ -55,7 +55,7 @@ The hosted demo uses synthetic data and PayPal Sandbox. Do not enter real custom
   - Username: `merchant.demo`
   - Password: `PackSafe#2026`
 - Open **Orders**, select an existing paid demonstration order, and inspect its purchased products and quantities.
-- Continue to the manifest and Packing Station; review the saved inspection and merchant decision.
+- Continue to the manifest and Packing Station; confirm the product names and quantities are shown from the paid order, then review the saved inspection and merchant decision.
 - In inspection review, select **Verify saved photo** to recompute the stored photo hash and size against the upload-time record.
 - The existing saved mug example demonstrates that a merchant can request correction even when the AI observation says MATCH.
 - The **Test checkout** tool is separate. A fresh checkout requires a PayPal Sandbox buyer account; do not use a live PayPal account.
