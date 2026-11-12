@@ -384,33 +384,36 @@ export function ProductCatalogueView() {
                     <small>Shown on the product page and checkout.</small>
                   </label>
 
-                  <label className="product-profile-field">
-                    <span>Packing verification details (private)</span>
-                    <textarea
-                      aria-label={`Packing verification details for ${product.name}`}
-                      rows={3}
-                      maxLength={500}
-                      value={draft.description}
-                      onChange={event => updateDraft(product.sku, 'description', event.target.value)}
-                      placeholder="Describe the exact colour, material, size, finish or variant."
-                      required
-                    />
-                    <small>Used to compare the packed item with the catalogue reference. Buyers do not see this.</small>
-                  </label>
-                  <label className="product-profile-field">
-                    <span>Barcode / GTIN (optional)</span>
-                    <input
-                      aria-label={`GTIN for ${product.name}`}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      maxLength={20}
-                      value={draft.barcode_gtin}
-                      onChange={event => updateDraft(product.sku, 'barcode_gtin', event.target.value)}
-                      placeholder="8, 12, 13 or 14 digits"
-                    />
-                    <small>Enter the number printed under the barcode. ParcelProof validates its check digit.</small>
-                  </label>
+                  <details className="product-profile-advanced">
+                    <summary>Extra product details (optional)</summary>
+                    <label className="product-profile-field">
+                      <span>What helps tell this product apart?</span>
+                      <textarea
+                        aria-label={`Product matching details for ${product.name}`}
+                        rows={2}
+                        maxLength={500}
+                        value={draft.description}
+                        onChange={event => updateDraft(product.sku, 'description', event.target.value)}
+                        placeholder="For example: navy cover, leaf print, round handle or 160 pages."
+                        required
+                      />
+                      <small>Add only visible details that distinguish this version. These details are private and used for packing comparisons.</small>
+                    </label>
+                    <label className="product-profile-field">
+                      <span>Barcode number (optional)</span>
+                      <input
+                        aria-label={`Barcode number for ${product.name}`}
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        maxLength={20}
+                        value={draft.barcode_gtin}
+                        onChange={event => updateDraft(product.sku, 'barcode_gtin', event.target.value)}
+                        placeholder="Digits printed below the barcode"
+                      />
+                      <small>We check the number's format and check digit. This form does not scan barcodes.</small>
+                    </label>
+                  </details>
 
                   <label className="product-profile-field">
                     <span>Reference photo (optional)</span>
@@ -1557,6 +1560,7 @@ export default function App() {
           setActiveShipmentId={setActiveShipmentId}
           navigateTo={navigateTo}
           prefetchedManifest={prefetchedManifest}
+          workspaceLoading={loading}
         />
       )}
 
@@ -2646,7 +2650,7 @@ export function ExportDocumentWorkflow({ shipment }) {
 
 
 // ─── Packing Station Workflow View ────────────────────────────────────────────
-export function PackingStationView({ orders, activeShipmentId, setActiveShipmentId, navigateTo, prefetchedManifest }) {
+export function PackingStationView({ orders, activeShipmentId, setActiveShipmentId, navigateTo, prefetchedManifest, workspaceLoading = false }) {
   const [manifest, setManifest] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -2747,7 +2751,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     async function fetchManifest() {
       if (!selectedShipment) {
         setManifest(null)
-        setLoading(false)
+        setLoading(Boolean(workspaceLoading))
         return
       }
       if (prefetchedManifest?.shipmentId === selectedShipment.order_id && prefetchedManifest.manifest) {
@@ -2781,7 +2785,7 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     return () => {
       ignore = true
     }
-  }, [selectedShipment, prefetchedManifest])
+  }, [selectedShipment, prefetchedManifest, workspaceLoading])
 
   useEffect(() => {
     let ignore = false
@@ -3180,14 +3184,19 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                   <div className="declared-items-preview">
                     <strong>Items in this order</strong>
                     <div className="declared-items-chips">
-                      {manifest.items?.map((it, i) => (
-                        <span key={i} className="declared-chip">
-                          <span className="chip-qty">{it.expected_qty}x</span>
-                          <span className="chip-desc">{it.description}</span>
-                          {it.fragile && <span className="chip-fragile">Handle with care</span>}
-                        </span>
-                      ))}
+                      {manifest.items?.map((it, i) => {
+                        const orderedItem = (selectedShipment.items || []).find(item => item.sku === it.sku)
+                        const productName = orderedItem?.name || it.sku || String(it.description || 'Order item').split(/[.!?]/)[0]
+                        return (
+                          <span key={i} className="declared-chip">
+                            <span className="chip-qty">{it.expected_qty}x</span>
+                            <span className="chip-desc">{productName}</span>
+                            {it.fragile && <span className="chip-fragile">Handle with care</span>}
+                          </span>
+                        )
+                      })}
                     </div>
+                    <small className="declared-items-help">Check the product name and quantity here. Extra matching details are kept for the AI comparison and are not part of the order description.</small>
                   </div>
 
                   {/* Upload Notification / Errors */}
@@ -3298,9 +3307,16 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                 </div>
               )}
             </>
+          ) : workspaceLoading ? (
+            <div className="checkout-state-box" style={{ padding: '60px' }} role="status">
+              <div className="checkout-state-icon loading-spinner"><SpinnerIcon /></div>
+              <p>Loading your paid orders…</p>
+            </div>
           ) : (
-            <div className="checkout-state-box" style={{ padding: '60px' }}>
-              <p>No shipments available.</p>
+            <div className="checkout-state-box" style={{ padding: '48px 24px' }}>
+              <h3>No paid orders ready to pack</h3>
+              <p>Once a PayPal payment is captured, its order will appear here.</p>
+              <button className="btn-primary" type="button" onClick={() => navigateTo('/')}>Back to Orders</button>
             </div>
           )}
         </section>
