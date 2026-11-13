@@ -1376,6 +1376,7 @@ def list_inspection_summaries_for_manifest(manifest_id: str) -> list[dict]:
                 pi.inspection_status,
                 pi.photo_count,
                 pi.model_used,
+                pi.ai_result,
                 pi.manifest_hash_at_inspection,
                 pi.created_at,
                 (SELECT ir.decision FROM inspection_reviews ir
@@ -1399,6 +1400,20 @@ def list_inspection_summaries_for_manifest(manifest_id: str) -> list[dict]:
         summaries = []
         for row in rows:
             item = dict(row)
+            raw_ai_result = item.pop("ai_result", None)
+            try:
+                parsed_ai_result = (
+                    json.loads(raw_ai_result)
+                    if isinstance(raw_ai_result, str)
+                    else raw_ai_result
+                )
+            except (TypeError, ValueError):
+                parsed_ai_result = None
+            item["retry_available"] = bool(
+                item.get("inspection_status") == "AI_FAILED"
+                and isinstance(parsed_ai_result, dict)
+                and parsed_ai_result.get("retry_available")
+            )
             decision = item.pop("latest_review_decision")
             notes = item.pop("latest_review_notes")
             reviewer = item.pop("latest_review_reviewer_label")
