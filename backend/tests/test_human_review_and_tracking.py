@@ -27,6 +27,8 @@ from app.store import (
     get_shipment_by_order_id,
 )
 from app.packing_inspector import GeminiUnavailableError
+from app import store
+
 from app.main import (
     app,
     review_packing_inspection,
@@ -202,7 +204,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
             self.assertEqual(retried["photo_count"], 1)
             attempts = store.list_inspections_for_manifest(self.manifest["id"])
             self.assertEqual(len(attempts), 2)
-            self.assertEqual(get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
+            self.assertEqual(store.get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
             self.assertEqual(attempts[0]["inspection_status"], "PENDING_HUMAN_REVIEW")
             self.assertEqual(attempts[1]["inspection_status"], "AI_FAILED")
 
@@ -227,7 +229,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
                         asyncio.run(retry_saved_packing_inspection(failed["id"]))
 
             self.assertEqual(retry_response.exception.status_code, 409)
-            self.assertEqual(get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
+            self.assertEqual(store.get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
             self.assertEqual(len(store.list_inspections_for_manifest(self.manifest["id"])), 1)
 
     def test_native_browser_review_form_persists_decision_and_redirects(self):
