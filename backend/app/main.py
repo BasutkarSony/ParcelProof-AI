@@ -1789,8 +1789,13 @@ async def retry_saved_packing_inspection(inspection_id: str):
     manifest = get_manifest(failed["manifest_id"])
     if manifest is None:
         raise HTTPException(status_code=404, detail="The failed inspection's manifest was not found.")
+    saved_manifest_hash = (
+        failed.get("manifest_hash_at_inspection")
+        or failed.get("manifest_hash")
+    )
     if manifest.get("status") != "FINALIZED" or (
-        manifest.get("manifest_hash") != failed.get("manifest_hash_at_inspection")
+        not saved_manifest_hash
+        or manifest.get("manifest_hash") != saved_manifest_hash
     ):
         raise HTTPException(
             status_code=409,
