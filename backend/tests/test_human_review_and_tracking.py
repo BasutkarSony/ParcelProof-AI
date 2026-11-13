@@ -402,7 +402,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
         )
         self.assertEqual(correction["inspection_status"], "NEEDS_CORRECTION")
         original_hash = self.manifest["manifest_hash"]
-        replacement_photo = b"\\xff\\xd8\\xff" + b"corrected-packing-photo"
+        replacement_photo = b"\xff\xd8\xff" + b"corrected-packing-photo"
 
         with tempfile.TemporaryDirectory() as photo_dir:
             upload = UploadFile(
