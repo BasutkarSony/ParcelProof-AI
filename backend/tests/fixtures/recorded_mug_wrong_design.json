@@ -1,0 +1,27 @@
+{
+  "case_id": "recorded-mug-wrong-design-2026-11-13",
+  "source": "ParcelProof demo screen recording captured 13 November 2026",
+  "product": {
+    "sku": "MUG-CER-001",
+    "expected_quantity": 1,
+    "identity_description": "Ceramic coffee mug. Compare the overall mug shape, handle, colour, glaze finish and any printed design with the catalogue reference.",
+    "catalogue_reference": "White ceramic mug with blue rim and blue botanical/leaf print."
+  },
+  "packing_photo": {
+    "captured_preview_description": "Plain light beige/grey ceramic mug with handle; no visible botanical print.",
+    "observed_quantity": 1,
+    "source_limitation": "Screen-recorded thumbnail crop; original uploaded photo bytes are not available in the recording."
+  },
+  "recorded_model_result": {
+    "result": "MATCH",
+    "identity_assessment": "CONSISTENT",
+    "confidence": "HIGH",
+    "matched_features": [
+      "ceramic coffee mug shape",
+      "handle presence",
+      "neutral glaze finish"
+    ]
+  },
+  "expected_result": "UNCERTAIN",
+  "expected_reason": "The required printed design was not confirmed, and the recorded packing photo visibly lacks the catalogue's botanical print."
+}

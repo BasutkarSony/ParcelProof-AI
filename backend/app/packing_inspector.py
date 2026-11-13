@@ -23,6 +23,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -305,21 +306,24 @@ def _build_prompt(
         "that barcode bars were decoded by a scanner. An unreadable or absent label "
         "does not by itself mean the product is wrong.\n"
         "5. Do not infer unlisted requirements beyond the manifest description or saved product profile. "
-        "Separate object detection from product-variant checking. Set "
-        "identity_assessment=CONSISTENT only when at least two distinctive physical "
-        "attributes visible in the packing photo(s) agree with the manifest description "
-        "or saved catalogue reference. List those attributes individually in "
-        "matched_features. They must be different attributes, not repeated wording for "
-        "the same clue (for example, 'navy' and 'blue' are both colour descriptions). "
-        "Set DIFFERENT when a relevant visible feature conflicts. "
-        "Set UNCERTAIN when a relevant feature cannot be compared, and NOT_ASSESSABLE "
-        "when there is no useful product identity reference. A general object category "
-        "match (for example, 'a ceramic mug is visible') is NOT enough to confirm a "
-        "specific product variant. If the colour, printed design, model, size or other "
-        "distinguishing variant cannot be checked, do not return result=MATCH. A visual "
-        "similarity is supporting evidence, not proof of an exact SKU.\n"
-        "6. Use result=MATCH only when identity_assessment=CONSISTENT, at least two "
-        "distinctive matched_features are listed, and observed_qty equals expected_qty. "
+        "Separate object detection from product-variant checking. When the saved profile "
+        "names a distinguishing attribute such as colour, printed design, size, model, "
+        "material or finish, treat every named attribute as a required comparison. "
+        "List the positive matches for those attributes individually in matched_features. "
+        "Do not substitute generic clues such as mug shape or handle presence for a "
+        "different required detail such as its print, colour or size. Set "
+        "identity_assessment=CONSISTENT only when each explicitly named distinguishing "
+        "attribute is visibly confirmed and at least two different physical attributes "
+        "are listed. The attributes must not be repeated wording for the same clue "
+        "(for example, 'navy' and 'blue' are both colour descriptions). Set DIFFERENT "
+        "when a relevant visible feature conflicts. Set UNCERTAIN when a required "
+        "attribute cannot be compared, and NOT_ASSESSABLE when there is no useful "
+        "product identity reference. A general object category match (for example, "
+        "'a ceramic mug is visible') is NOT enough to confirm a specific product variant. "
+        "A visual similarity is supporting evidence, not proof of an exact SKU.\n"
+        "6. Use result=MATCH only when identity_assessment=CONSISTENT, all explicitly "
+        "named distinguishing attributes are confirmed, at least two different "
+        "matched_features are listed, and observed_qty equals expected_qty. "
         "Otherwise use result=UNCERTAIN or the appropriate quantity observation.\n"
         "7. When referring to captured evidence, use PACKING PHOTO 1, PACKING PHOTO 2, "
         "and so on. Catalogue reference images are never counted in this numbering. "
@@ -503,7 +507,7 @@ def _run_openai_inspection(
         ) from None
 
     _validate_ai_result(ai_result, manifest, len(photo_metas) if photo_metas else None)
-    _apply_conservative_identity_rules(ai_result)
+    _apply_conservative_identity_rules(ai_result, product_context)
 
     return {
         "ai_result": ai_result,
@@ -623,7 +627,7 @@ def _run_groq_inspection(
         raise RuntimeError("Groq vision returned an unexpected response format.") from None
 
     _validate_ai_result(ai_result, manifest, len(photo_metas) if photo_metas else None)
-    _apply_conservative_identity_rules(ai_result)
+    _apply_conservative_identity_rules(ai_result, product_context)
 
     return {
         "ai_result": ai_result,
@@ -866,9 +870,92 @@ def _validate_ai_result(
 
 
 
-def _apply_conservative_identity_rules(ai_result: dict) -> dict:
-    """Downgrade unsupported MATCH claims before saving AI inspection results."""
+_PROFILE_ATTRIBUTE_REQUIREMENTS = {
+    "colour": re.compile(r"\bcolou?r\b", re.IGNORECASE),
+    "design": re.compile(r"\b(?:print(?:ed)?|design|pattern|motif|graphic|logo)\b", re.IGNORECASE),
+    "size": re.compile(r"\b(?:size|dimensions?|measurements?|A[0-6])\b", re.IGNORECASE),
+    "model": re.compile(r"\b(?:model|version|edition|generation|series)\b", re.IGNORECASE),
+    "material": re.compile(r"\b(?:material|fabric|composition)\b", re.IGNORECASE),
+    "finish": re.compile(r"\b(?:finish|glaze|coating|texture)\b", re.IGNORECASE),
+}
+
+_FEATURE_ATTRIBUTE_MARKERS = {
+    "colour": re.compile(
+        r"\b(?:colou?r|black|white|beige|cream|ivory|blue|navy|red|green|yellow|"
+        r"grey|gray|pink|purple|brown|orange|neutral|gold|silver|teal|maroon)\b",
+        re.IGNORECASE,
+    ),
+    "design": re.compile(
+        r"\b(?:design|pattern|print(?:ed)?|floral|botanical|leaf|leaves|motif|"
+        r"graphic|logo|illustration|artwork|embroidered|embroidery|embossed|"
+        r"engraved|striped|stripe|plaid|checked|polka)\b",
+        re.IGNORECASE,
+    ),
+    "size": re.compile(
+        r"\b(?:size|dimension|measurement|A[0-6]|small|medium|large|XL|XXL)\b",
+        re.IGNORECASE,
+    ),
+    "model": re.compile(
+        r"\b(?:model|version|edition|generation|series)\b",
+        re.IGNORECASE,
+    ),
+    "material": re.compile(
+        r"\b(?:material|fabric|composition|ceramic|stoneware|cotton|leather|"
+        r"steel|stainless|plastic|glass|wooden|wood)\b",
+        re.IGNORECASE,
+    ),
+    "finish": re.compile(
+        r"\b(?:finish|glaze|coating|texture|matte|glossy|satin|polished|brushed)\b",
+        re.IGNORECASE,
+    ),
+}
+
+_ATTRIBUTE_LABELS = {
+    "colour": "colour",
+    "design": "printed design",
+    "size": "size",
+    "model": "model",
+    "material": "material",
+    "finish": "finish",
+}
+
+
+def _required_profile_attributes(description: str) -> set[str]:
+    """Find variant attributes the merchant explicitly asked the model to compare."""
+    return {
+        attribute
+        for attribute, pattern in _PROFILE_ATTRIBUTE_REQUIREMENTS.items()
+        if pattern.search(description or "")
+    }
+
+
+def _confirmed_feature_attributes(features: list[str]) -> set[str]:
+    """Map positive model-reported features to the attributes they actually describe."""
+    confirmed = set()
+    for feature in features:
+        value = str(feature).strip()
+        if not value:
+            continue
+        # matched_features must describe a positive agreement, not a discrepancy.
+        if re.search(r"\b(?:no|not|without|absent|missing|plain|blank|unprinted)\b", value, re.IGNORECASE):
+            continue
+        for attribute, pattern in _FEATURE_ATTRIBUTE_MARKERS.items():
+            if pattern.search(value):
+                confirmed.add(attribute)
+    return confirmed
+
+
+def _apply_conservative_identity_rules(
+    ai_result: dict,
+    product_context: list[dict] | None = None,
+) -> dict:
+    """Downgrade MATCH claims missing quantity, distinct evidence or required variant details."""
     notes = ai_result.setdefault("additional_observations", {}).setdefault("uncertainty_notes", [])
+    profiles_by_sku = {
+        str(profile.get("sku") or "").strip(): profile
+        for profile in (product_context or [])
+        if str(profile.get("sku") or "").strip()
+    }
     for check in ai_result.get("item_checks", []):
         if check.get("result") != "MATCH":
             continue
@@ -892,19 +979,44 @@ def _apply_conservative_identity_rules(ai_result: dict) -> dict:
             if feature and normalized_feature not in seen_features:
                 features.append(feature)
                 seen_features.add(normalized_feature)
-        if check.get("identity_assessment") != "CONSISTENT" or len(features) < 2 or observed is None:
+        sku = str(check.get("sku") or "").strip()
+        profile = profiles_by_sku.get(sku, {})
+        required_attributes = _required_profile_attributes(profile.get("description") or "")
+        confirmed_attributes = _confirmed_feature_attributes(features)
+        missing_attributes = sorted(required_attributes - confirmed_attributes)
+
+        if (
+            check.get("identity_assessment") != "CONSISTENT"
+            or len(features) < 2
+            or observed is None
+            or missing_attributes
+        ):
             check["result"] = "UNCERTAIN"
             check["confidence"] = "LOW"
             assessment = check.get("identity_assessment")
+            reasons = []
             if assessment == "DIFFERENT":
-                reason = "The model reports a visible product-identity difference."
+                reasons.append("The model reports a visible product-identity difference.")
             elif assessment == "NOT_ASSESSABLE":
-                reason = "The exact product identity cannot be assessed from the saved reference information."
-            else:
-                reason = "The model did not provide two distinct visible features that support the product-variant comparison."
+                reasons.append("The exact product identity cannot be assessed from the saved reference information.")
+            elif assessment != "CONSISTENT":
+                reasons.append("The model did not confirm a consistent product identity.")
+            if len(features) < 2:
+                reasons.append("Fewer than two different visible product attributes were provided.")
+            if observed is None:
+                reasons.append("The visible quantity could not be confirmed.")
+            if missing_attributes:
+                missing_labels = [_ATTRIBUTE_LABELS[item] for item in missing_attributes]
+                reasons.append(
+                    "The saved product profile asks for "
+                    + ", ".join(missing_labels)
+                    + ", but the model did not explicitly confirm "
+                    + ("it." if len(missing_labels) == 1 else "them.")
+                )
             notes.append(
-                f"{check.get('sku') or check.get('description')}: {reason} "
-                "The original MATCH claim was downgraded to UNCERTAIN and requires merchant review."
+                f"{sku or check.get('description')}: "
+                + " ".join(reasons)
+                + " The original MATCH claim was downgraded to UNCERTAIN and requires merchant review."
             )
     ai_result["human_review_required"] = True
     return ai_result
@@ -1022,7 +1134,7 @@ def _run_gemini_inspection(
 
     # Validate structure, packing-photo numbering and manifest item IDs before persistence.
     _validate_ai_result(ai_result, manifest, len(photo_metas) if photo_metas else None)
-    _apply_conservative_identity_rules(ai_result)
+    _apply_conservative_identity_rules(ai_result, product_context)
 
     # Hard-enforce the safety invariant regardless of what the model returned.
     ai_result["human_review_required"] = True

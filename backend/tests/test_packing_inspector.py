@@ -160,7 +160,7 @@ class PromptConstructionTests(unittest.TestCase):
         prompt = self.pi._build_prompt(self.manifest)
         self.assertIn("Do not infer unlisted requirements", prompt)
         self.assertIn("A general object category", prompt)
-        self.assertIn("do not return result=MATCH", prompt)
+        self.assertIn("Set UNCERTAIN when a required attribute cannot be compared", prompt)
 
 
     def test_reference_images_are_labelled_as_catalogue_context_not_packed_items(self):
@@ -182,7 +182,7 @@ class PromptConstructionTests(unittest.TestCase):
         self.assertIn("PACKING PHOTO 1", prompt)
         self.assertIn("do not use the combined provider image position", prompt)
         self.assertIn("A general object category", prompt)
-        self.assertIn("at least two distinctive physical attributes", prompt)
+        self.assertIn("at least two different physical attributes", prompt)
 
 # ---------------------------------------------------------------------------
 # Packing inspector unit tests (no DB, no HTTP)
@@ -1460,13 +1460,67 @@ class GeminiResponseValidationTests(unittest.TestCase):
         self._pi._apply_conservative_identity_rules(result)
         self.assertEqual(result["item_checks"][0]["result"], "MATCH")
 
-    def test_match_with_wrong_visible_quantity_is_downgraded(self):
+    def test_recorded_mug_wrong_design_false_positive_is_downgraded(self):
+        fixture_path = (
+            Path(__file__).resolve().parent
+            / "fixtures"
+            / "recorded_mug_wrong_design.json"
+        )
+        case = json.loads(fixture_path.read_text(encoding="utf-8"))
         result = self._valid_result()
-        result["item_checks"][0]["expected_qty"] = 2
-        result["item_checks"][0]["observed_qty"] = 1
-        self._pi._apply_conservative_identity_rules(result)
-        self.assertEqual(result["item_checks"][0]["result"], "POSSIBLE_MISSING")
-        self.assertEqual(result["item_checks"][0]["confidence"], "LOW")
+        result["item_checks"][0]["sku"] = case["product"]["sku"]
+        result["item_checks"][0]["matched_features"] = (
+            case["recorded_model_result"]["matched_features"]
+        )
+        profile = {
+            "sku": case["product"]["sku"],
+            "description": case["product"]["identity_description"],
+            "reference_image_status": "LOADED",
+        }
+        self._pi._apply_conservative_identity_rules(result, [profile])
+        check = result["item_checks"][0]
+        self.assertEqual(check["result"], case["expected_result"])
+        self.assertEqual(check["confidence"], "LOW")
+        self.assertTrue(any(
+            "printed design" in note
+            for note in result["additional_observations"]["uncertainty_notes"]
+        ))
+
+    def test_match_with_required_variant_attributes_confirmed_is_preserved(self):
+        result = self._valid_result()
+        result["item_checks"][0]["sku"] = "MUG-CER-001"
+        result["item_checks"][0]["matched_features"] = [
+            "mug shape",
+            "handle presence",
+            "blue rim colour",
+            "glaze finish",
+            "blue botanical printed design",
+        ]
+        profile = {
+            "sku": "MUG-CER-001",
+            "description": "Compare the mug shape, handle, colour, glaze finish and printed design.",
+            "reference_image_status": "LOADED",
+        }
+        self._pi._apply_conservative_identity_rules(result, [profile])
+        self.assertEqual(result["item_checks"][0]["result"], "MATCH")
+
+    def test_size_colour_and_design_must_be_explicitly_confirmed(self):
+        result = self._valid_result()
+        result["item_checks"][0]["sku"] = "NB-A5-001"
+        result["item_checks"][0]["matched_features"] = [
+            "A5 proportions",
+            "navy cover",
+            "hardcover binding",
+        ]
+        profile = {
+            "sku": "NB-A5-001",
+            "description": "Compare size, cover colour and printed design.",
+            "reference_image_status": "LOADED",
+        }
+        self._pi._apply_conservative_identity_rules(result, [profile])
+        self.assertEqual(result["item_checks"][0]["result"], "UNCERTAIN")
+        note = " ".join(result["additional_observations"]["uncertainty_notes"])
+        self.assertIn("printed design", note)
 
     def test_photo_assessment_cannot_reference_catalogue_image_position(self):
         result = self._valid_result()
