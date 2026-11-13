@@ -1893,7 +1893,7 @@ def list_manifest_inspections(manifest_id: str):
                 "manifest_hash_at_inspection": item["manifest_hash_at_inspection"],
                 "created_at": item["created_at"],
                 "latest_review": item["latest_review"],
-                "retry_available": bool((item.get("ai_result") or {}).get("retry_available")),
+                "retry_available": bool(item.get("retry_available", False)),
             }
             for item in inspections
         ],
