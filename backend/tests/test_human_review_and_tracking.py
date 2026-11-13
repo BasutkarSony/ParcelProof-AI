@@ -185,6 +185,9 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
                     failed = store.get_inspection(failed_summary["id"])
                     self.assertEqual(failed["inspection_status"], "AI_FAILED")
                     self.assertTrue(failed["ai_result"]["retry_available"])
+                    history_summary = store.list_inspection_summaries_for_manifest(self.manifest["id"])[0]
+                    self.assertEqual(history_summary["id"], failed["id"])
+                    self.assertTrue(history_summary["retry_available"])
                     saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
                     self.assertEqual(saved_photo.read_bytes(), original_photo)
 
