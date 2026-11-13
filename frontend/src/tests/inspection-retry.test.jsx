@@ -30,14 +30,20 @@ const jsonResponse = (data, status = 200) => ({
   text: async () => JSON.stringify(data),
 })
 
-function setupPackingStation(inspectionResponses) {
+function setupPackingStation(inspectionResponses, savedInspectionHistory = { inspections: [] }) {
   const responses = [...inspectionResponses]
   const fetchMock = vi.fn(async (url, options = {}) => {
     if (String(url).includes('/api/shipments/ORD-1001/manifest')) {
       return jsonResponse(mockManifest)
     }
+    if (String(url).includes('/api/inspections/') && String(url).endsWith('/retry') && options.method === 'POST') {
+      return responses.shift() || jsonResponse({ detail: 'Unexpected saved-photo retry request' }, 500)
+    }
     if (String(url).includes('/api/manifests/manifest-1/inspections') && options.method === 'POST') {
       return responses.shift() || jsonResponse({ detail: 'Unexpected inspection request' }, 500)
+    }
+    if (String(url).includes('/api/manifests/manifest-1/inspections')) {
+      return jsonResponse(savedInspectionHistory)
     }
     return jsonResponse({ detail: 'Not found' }, 404)
   })
@@ -77,6 +83,37 @@ describe('AI inspection retry behavior', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+
+  it('offers retry for the latest saved failed photo after the page is reloaded', async () => {
+    const { fetchMock, navigateTo } = setupPackingStation(
+      [jsonResponse({
+        inspection_id: 'inspection-retry-1',
+        inspection_status: 'PENDING_HUMAN_REVIEW',
+        photo_count: 1,
+        model_used: 'gemini-test-model',
+      }, 201)],
+      {
+        inspections: [{
+          inspection_id: 'failed-inspection-1',
+          inspection_status: 'AI_FAILED',
+          retry_available: true,
+          latest_review: null,
+        }],
+      }
+    )
+
+    expect(await screen.findByRole('heading', { name: 'Pack this order' })).toBeInTheDocument()
+    expect(await screen.findByText(/The photo was saved, but the AI provider did not complete the inspection/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry saved photo' }))
+
+    await waitFor(() => {
+      expect(navigateTo).toHaveBeenCalledWith('/inspections', { shipmentId: 'ORD-1001' })
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/inspections/failed-inspection-1/retry'),
+      { method: 'POST' }
+    )
   })
 
   it('offers retry after HTTP 503 and succeeds when retried', async () => {

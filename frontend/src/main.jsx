@@ -2665,6 +2665,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
   const [lastInspectionStatus, setLastInspectionStatus] = useState(null) // HTTP status of last provider failure (503 outage or 429 rate/quota limit)
   const [latestInspectionStatus, setLatestInspectionStatus] = useState(null)
   const [latestInspectionReview, setLatestInspectionReview] = useState(null)
+  const [latestInspectionId, setLatestInspectionId] = useState(null)
+  const [latestInspectionRetryAvailable, setLatestInspectionRetryAvailable] = useState(false)
   const [previousInspectionCount, setPreviousInspectionCount] = useState(0)
   const validationRun = useState(false)
   const aiAnalysisRun = useState(false)
@@ -2792,6 +2794,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
       if (!manifest?.id) {
         setLatestInspectionStatus(null)
         setLatestInspectionReview(null)
+        setLatestInspectionId(null)
+        setLatestInspectionRetryAvailable(false)
         setPreviousInspectionCount(0)
         return
       }
@@ -2804,11 +2808,15 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
         setPreviousInspectionCount(checks.length)
         setLatestInspectionStatus(checks[0]?.inspection_status || null)
         setLatestInspectionReview(checks[0]?.latest_review || null)
+        setLatestInspectionId(checks[0]?.inspection_id || null)
+        setLatestInspectionRetryAvailable(Boolean(checks[0]?.retry_available))
       } catch {
         if (!ignore) {
           setPreviousInspectionCount(0)
           setLatestInspectionStatus(null)
           setLatestInspectionReview(null)
+          setLatestInspectionId(null)
+          setLatestInspectionRetryAvailable(false)
         }
       }
     }
@@ -3016,6 +3024,68 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
     }
   }
 
+
+  async function handleRetrySavedInspection() {
+    if (!manifest?.id || !latestInspectionId || !latestInspectionRetryAvailable || uploading) return
+    if (inspectionInFlight.current) return
+
+    inspectionInFlight.current = true
+    setUploading(true)
+    setUploadError('')
+    setLastInspectionStatus(null)
+    setProcessingStatus('processing')
+
+    try {
+      const response = await fetch(
+        API_BASE + '/api/inspections/' + encodeURIComponent(latestInspectionId) + '/retry',
+        { method: 'POST' }
+      )
+      const data = await readApiJson(response)
+      if (!response.ok) {
+        const detail = typeof data.detail === 'string'
+          ? data.detail
+          : (data.detail ? JSON.stringify(data.detail) : '')
+        const err = new Error(detail || 'Saved-photo retry failed (HTTP ' + response.status + '). The existing evidence was not changed.')
+        err.status = response.status
+        throw err
+      }
+      if (!data.inspection_id) {
+        throw new Error('The retry service returned an incomplete response. Check the inspection history before trying again.')
+      }
+
+      setInspectionResult(data)
+      setProcessingStatus('complete')
+      setUploadError('')
+      setLastInspectionStatus(null)
+      navigateTo('/inspections', { shipmentId: selectedShipment.order_id })
+    } catch (err) {
+      setUploadError(err.message || 'Could not retry the saved packing photo.')
+      setLastInspectionStatus([429, 503].includes(err.status) ? err.status : null)
+
+      // A provider failure during retry is still a new, saved AI_FAILED attempt.
+      // Refresh the history so the merchant can retry the newest attempt later.
+      try {
+        const historyResponse = await fetch(
+          API_BASE + '/api/manifests/' + encodeURIComponent(manifest.id) + '/inspections'
+        )
+        const history = await readApiJson(historyResponse)
+        if (historyResponse.ok) {
+          const checks = history.inspections || []
+          setPreviousInspectionCount(checks.length)
+          setLatestInspectionStatus(checks[0]?.inspection_status || null)
+          setLatestInspectionReview(checks[0]?.latest_review || null)
+          setLatestInspectionId(checks[0]?.inspection_id || null)
+          setLatestInspectionRetryAvailable(Boolean(checks[0]?.retry_available))
+        }
+      } catch {
+        // Keep the original retry error visible; a later page refresh can reload history.
+      }
+    } finally {
+      setUploading(false)
+      inspectionInFlight.current = false
+    }
+  }
+
   const isManifestAssociated = Boolean(
     manifest &&
     manifest.shipment_order_id === selectedShipment?.order_id
@@ -3089,6 +3159,8 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                     <span className="pill pill-warn">Correction needed</span>
                   ) : latestInspectionStatus === 'REJECTED' ? (
                     <span className="pill pill-blocked">Inspection rejected</span>
+                  ) : latestInspectionStatus === 'AI_FAILED' ? (
+                    <span className="pill pill-blocked">AI check failed</span>
                   ) : latestInspectionStatus === 'PENDING_HUMAN_REVIEW' ? (
                     <span className="pill pill-warn">Awaiting your review</span>
                   ) : latestInspectionStatus === 'APPROVED' ? (
@@ -3103,11 +3175,33 @@ export function PackingStationView({ orders, activeShipmentId, setActiveShipment
                 </div>
               </div>
 
-              {(latestInspectionStatus === 'NEEDS_CORRECTION' || latestInspectionStatus === 'REJECTED') && (
+              {(latestInspectionStatus === 'NEEDS_CORRECTION' || latestInspectionStatus === 'REJECTED' || latestInspectionStatus === 'AI_FAILED') && (
                 <section className="correction-resume-banner" role="status">
                   <div>
-                    <strong>{latestInspectionStatus === 'NEEDS_CORRECTION' ? 'Continue the correction for this order' : 'A new packing check is required'}</strong>
-                    <p>The paid order and confirmed packing list are unchanged. Resolve the issue, then add a new photo. Earlier checks remain in the history.</p>
+                    <strong>
+                      {latestInspectionStatus === 'AI_FAILED'
+                        ? 'The saved packing photo needs another AI check'
+                        : latestInspectionStatus === 'NEEDS_CORRECTION'
+                          ? 'Continue the correction for this order'
+                          : 'A new packing check is required'}
+                    </strong>
+                    <p>
+                      {latestInspectionStatus === 'AI_FAILED'
+                        ? 'The photo was saved, but the AI provider did not complete the inspection. This attempt cannot be approved. Retry the saved photo or upload new evidence; the shipment stays on hold.'
+                        : 'The paid order and confirmed packing list are unchanged. Resolve the issue, then add a new photo. Earlier checks remain in the history.'}
+                    </p>
+                    {latestInspectionStatus === 'AI_FAILED' && latestInspectionRetryAvailable && (
+                      <div className="upload-submit-actions" style={{ marginTop: '12px' }}>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={handleRetrySavedInspection}
+                          disabled={loading || uploading}
+                        >
+                          {uploading ? 'Retrying saved photo…' : 'Retry saved photo'}
+                        </button>
+                      </div>
+                    )}
                     {latestInspectionReview?.notes && (
                       <p className="correction-resume-note"><strong>Merchant's note:</strong> {latestInspectionReview.notes}</p>
                     )}
