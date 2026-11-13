@@ -320,7 +320,7 @@ def _build_prompt(
         "attribute cannot be compared, and NOT_ASSESSABLE when there is no useful "
         "product identity reference. A general object category match (for example, "
         "'a ceramic mug is visible') is NOT enough to confirm a specific product variant. "
-        "A visual similarity is supporting evidence, not proof of an exact SKU.\\n"
+        "A visual similarity is supporting evidence, not proof of an exact SKU.\n"
         "6. Use result=MATCH only when identity_assessment=CONSISTENT, all explicitly "
         "named distinguishing attributes are confirmed, at least two different "
         "matched_features are listed, and observed_qty equals expected_qty. "
@@ -871,41 +871,41 @@ def _validate_ai_result(
 
 
 _PROFILE_ATTRIBUTE_REQUIREMENTS = {
-    "colour": re.compile(r"\bcolou?r\\b", re.IGNORECASE),
-    "design": re.compile(r"\b(?:print(?:ed)?|design|pattern|motif|graphic|logo)\\b", re.IGNORECASE),
-    "size": re.compile(r"\b(?:size|dimensions?|measurements?|A[0-6])\\b", re.IGNORECASE),
-    "model": re.compile(r"\b(?:model|version|edition|generation|series)\\b", re.IGNORECASE),
-    "material": re.compile(r"\b(?:material|fabric|composition)\\b", re.IGNORECASE),
-    "finish": re.compile(r"\b(?:finish|glaze|coating|texture)\\b", re.IGNORECASE),
+    "colour": re.compile(r"\bcolou?r\b", re.IGNORECASE),
+    "design": re.compile(r"\b(?:print(?:ed)?|design|pattern|motif|graphic|logo)\b", re.IGNORECASE),
+    "size": re.compile(r"\b(?:size|dimensions?|measurements?|A[0-6])\b", re.IGNORECASE),
+    "model": re.compile(r"\b(?:model|version|edition|generation|series)\b", re.IGNORECASE),
+    "material": re.compile(r"\b(?:material|fabric|composition)\b", re.IGNORECASE),
+    "finish": re.compile(r"\b(?:finish|glaze|coating|texture)\b", re.IGNORECASE),
 }
 
 _FEATURE_ATTRIBUTE_MARKERS = {
     "colour": re.compile(
         r"\b(?:colou?r|black|white|beige|cream|ivory|blue|navy|red|green|yellow|"
-        r"grey|gray|pink|purple|brown|orange|neutral|gold|silver|teal|maroon)\\b",
+        r"grey|gray|pink|purple|brown|orange|neutral|gold|silver|teal|maroon)\b",
         re.IGNORECASE,
     ),
     "design": re.compile(
         r"\b(?:design|pattern|print(?:ed)?|floral|botanical|leaf|leaves|motif|"
         r"graphic|logo|illustration|artwork|embroidered|embroidery|embossed|"
-        r"engraved|striped|stripe|plaid|checked|polka)\\b",
+        r"engraved|striped|stripe|plaid|checked|polka)\b",
         re.IGNORECASE,
     ),
     "size": re.compile(
-        r"\b(?:size|dimension|measurement|A[0-6]|small|medium|large|XL|XXL)\\b",
+        r"\b(?:size|dimension|measurement|A[0-6]|small|medium|large|XL|XXL)\b",
         re.IGNORECASE,
     ),
     "model": re.compile(
-        r"\b(?:model|version|edition|generation|series)\\b",
+        r"\b(?:model|version|edition|generation|series)\b",
         re.IGNORECASE,
     ),
     "material": re.compile(
         r"\b(?:material|fabric|composition|ceramic|stoneware|cotton|leather|"
-        r"steel|stainless|plastic|glass|wooden|wood)\\b",
+        r"steel|stainless|plastic|glass|wooden|wood)\b",
         re.IGNORECASE,
     ),
     "finish": re.compile(
-        r"\b(?:finish|glaze|coating|texture|matte|glossy|satin|polished|brushed)\\b",
+        r"\b(?:finish|glaze|coating|texture|matte|glossy|satin|polished|brushed)\b",
         re.IGNORECASE,
     ),
 }
@@ -937,7 +937,7 @@ def _confirmed_feature_attributes(features: list[str]) -> set[str]:
         if not value:
             continue
         # matched_features must describe a positive agreement, not a discrepancy.
-        if re.search(r"\b(?:no|not|without|absent|missing|plain|blank|unprinted)\\b", value, re.IGNORECASE):
+        if re.search(r"\b(?:no|not|without|absent|missing|plain|blank|unprinted)\b", value, re.IGNORECASE):
             continue
         for attribute, pattern in _FEATURE_ATTRIBUTE_MARKERS.items():
             if pattern.search(value):
