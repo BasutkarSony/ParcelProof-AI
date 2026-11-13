@@ -389,6 +389,124 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
         self.assertEqual(saved_original["review_history"][0]["decision"], "NEEDS_CORRECTION")
         self.assertEqual(replacement_inspection["inspection_status"], "PENDING_HUMAN_REVIEW")
 
+    @patch.dict(os.environ, {"PAYPAL_TRACKING_SUBMISSION_ENABLED": "true"})
+    @patch("app.main.submit_tracking")
+    def test_correction_cycle_uploads_new_photo_reinspects_and_requires_fresh_approval(self, mock_submit):
+        correction = review_packing_inspection(
+            self.inspection["id"],
+            {
+                "decision": "NEEDS_CORRECTION",
+                "reviewer_label": "Merchant",
+                "notes": "The printed design is not clear. Replace the item and take a new photo.",
+            },
+        )
+        self.assertEqual(correction["inspection_status"], "NEEDS_CORRECTION")
+        original_hash = self.manifest["manifest_hash"]
+        replacement_photo = b"\\xff\\xd8\\xff" + b"corrected-packing-photo"
+
+        with tempfile.TemporaryDirectory() as photo_dir:
+            upload = UploadFile(
+                filename="corrected-packing.jpg",
+                file=BytesIO(replacement_photo),
+            )
+            with patch("app.packing_inspector.PHOTO_DIR", Path(photo_dir)):
+                with patch.dict(os.environ, {"SUPABASE_URL": ""}):
+                    with patch(
+                        "app.main.run_inspection",
+                        return_value={
+                            "model_used": "gemini-test-model",
+                            "ai_result": {
+                                "inspection_summary": "The replacement photo shows the expected item.",
+                                "image_quality": {
+                                    "overall": "GOOD",
+                                    "photo_assessments": [
+                                        {"photo_index": 1, "useful": True, "notes": "Clear replacement photo."}
+                                    ],
+                                    "limitations": [],
+                                },
+                                "item_checks": [],
+                                "additional_observations": {
+                                    "possible_extra_items": [],
+                                    "visible_product_damage": [],
+                                    "visible_packaging_damage": [],
+                                    "uncertainty_notes": [],
+                                },
+                                "human_review_required": True,
+                            },
+                        },
+                    ):
+                        replacement = asyncio.run(
+                            create_packing_inspection(self.manifest["id"], [upload])
+                        )
+
+                        replacement_id = replacement["inspection_id"]
+                        self.assertNotEqual(replacement_id, self.inspection["id"])
+                        self.assertEqual(
+                            replacement["inspection_status"],
+                            "PENDING_HUMAN_REVIEW",
+                        )
+                        self.assertEqual(
+                            replacement["manifest_hash_at_inspection"],
+                            original_hash,
+                        )
+                        self.assertEqual(replacement["photo_count"], 1)
+                        self.assertEqual(
+                            replacement["photos"][0]["sha256"],
+                            hashlib.sha256(replacement_photo).hexdigest(),
+                        )
+                        self.assertEqual(
+                            (Path(photo_dir) / f"{replacement['photos'][0]['id']}.jpg").read_bytes(),
+                            replacement_photo,
+                        )
+
+        history = store.list_inspections_for_manifest(self.manifest["id"])
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]["id"], replacement_id)
+        self.assertEqual(history[0]["inspection_status"], "PENDING_HUMAN_REVIEW")
+        previous = get_inspection(self.inspection["id"])
+        self.assertEqual(previous["inspection_status"], "NEEDS_CORRECTION")
+        self.assertEqual(
+            previous["review_history"][0]["decision"],
+            "NEEDS_CORRECTION",
+        )
+        self.assertEqual(store.get_manifest(self.manifest["id"])["manifest_hash"], original_hash)
+
+        with self.assertRaises(HTTPException) as blocked:
+            submit_shipment_tracking(
+                self.shipment["order_id"],
+                {
+                    "tracking_number": "DELH123456",
+                    "carrier": "OTHER",
+                    "carrier_name_other": "Delhivery",
+                },
+            )
+        self.assertEqual(blocked.exception.status_code, 409)
+        mock_submit.assert_not_called()
+
+        approved = review_packing_inspection(
+            replacement_id,
+            {
+                "decision": "APPROVED",
+                "reviewer_label": "Merchant",
+                "notes": "The replacement photo shows the corrected item.",
+            },
+        )
+        self.assertEqual(approved["inspection_status"], "APPROVED")
+        mock_submit.return_value = {"id": "PAYPALORDER123", "status": "COMPLETED"}
+        submitted = submit_shipment_tracking(
+            self.shipment["order_id"],
+            {
+                "tracking_number": "DELH123456",
+                "carrier": "OTHER",
+                "carrier_name_other": "Delhivery",
+                "notify_payer": True,
+            },
+        )
+        self.assertTrue(submitted["submitted"])
+        mock_submit.assert_called_once()
+        persisted = get_shipment_by_order_id(self.shipment["order_id"])
+        self.assertEqual(persisted["tracking_submission_status"], "SUBMITTED")
+
     def test_inspection_history_returns_compact_runs_with_prior_merchant_decisions(self):
         review_packing_inspection(
             self.inspection["id"],
