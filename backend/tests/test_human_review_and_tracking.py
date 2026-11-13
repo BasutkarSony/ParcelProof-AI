@@ -168,7 +168,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
             self.assertTrue(saved_photo.is_file())
 
     def test_saved_failed_inspection_can_be_retried_after_reload(self):
-        original_photo = b"\\xff\\xd8\\xff" + b"original-packed-photo"
+        original_photo = b"\xff\xd8\xff" + b"original-packed-photo"
         with tempfile.TemporaryDirectory() as photo_dir:
             with patch("app.packing_inspector.PHOTO_DIR", Path(photo_dir)):
                 with patch.dict(os.environ, {"SUPABASE_URL": ""}):
@@ -211,7 +211,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
             self.assertEqual(attempts[1]["inspection_status"], "AI_FAILED")
 
     def test_saved_failed_inspection_retry_rejects_modified_photo_bytes(self):
-        original_photo = b"\\xff\\xd8\\xff" + b"original-packed-photo"
+        original_photo = b"\xff\xd8\xff" + b"original-packed-photo"
         with tempfile.TemporaryDirectory() as photo_dir:
             with patch("app.packing_inspector.PHOTO_DIR", Path(photo_dir)):
                 with patch.dict(os.environ, {"SUPABASE_URL": ""}):
@@ -226,7 +226,7 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
                     failed_summary = store.list_inspections_for_manifest(self.manifest["id"])[0]
                     failed = store.get_inspection(failed_summary["id"])
                     saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
-                    saved_photo.write_bytes(b"\\xff\\xd8\\xff" + b"tampered-packed-photo")
+                    saved_photo.write_bytes(b"\xff\xd8\xff" + b"tampered-packed-photo")
 
                     with self.assertRaises(HTTPException) as retry_response:
                         asyncio.run(retry_saved_packing_inspection(failed["id"]))
