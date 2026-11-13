@@ -160,7 +160,7 @@ class PromptConstructionTests(unittest.TestCase):
         prompt = self.pi._build_prompt(self.manifest)
         self.assertIn("Do not infer unlisted requirements", prompt)
         self.assertIn("A general object category", prompt)
-        self.assertIn("If a required attribute cannot be compared", prompt)
+        self.assertIn("Set UNCERTAIN when a required attribute cannot be compared", prompt)
 
 
     def test_reference_images_are_labelled_as_catalogue_context_not_packed_items(self):
