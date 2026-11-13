@@ -1460,13 +1460,65 @@ class GeminiResponseValidationTests(unittest.TestCase):
         self._pi._apply_conservative_identity_rules(result)
         self.assertEqual(result["item_checks"][0]["result"], "MATCH")
 
-    def test_match_with_wrong_visible_quantity_is_downgraded(self):
+    def test_recorded_mug_wrong_design_false_positive_is_downgraded(self):
+        # Captured Gemini output from the recorded demo: shape, handle and finish
+        # were reported, while the catalogue's printed design was not confirmed.
         result = self._valid_result()
-        result["item_checks"][0]["expected_qty"] = 2
-        result["item_checks"][0]["observed_qty"] = 1
-        self._pi._apply_conservative_identity_rules(result)
-        self.assertEqual(result["item_checks"][0]["result"], "POSSIBLE_MISSING")
-        self.assertEqual(result["item_checks"][0]["confidence"], "LOW")
+        result["item_checks"][0]["sku"] = "MUG-CER-001"
+        result["item_checks"][0]["matched_features"] = [
+            "ceramic coffee mug shape",
+            "handle presence",
+            "neutral glaze finish",
+        ]
+        profile = {
+            "sku": "MUG-CER-001",
+            "description": (
+                "Ceramic coffee mug. Compare the overall mug shape, handle, colour, "
+                "glaze finish and any printed design with the catalogue reference."
+            ),
+            "reference_image_status": "LOADED",
+        }
+        self._pi._apply_conservative_identity_rules(result, [profile])
+        check = result["item_checks"][0]
+        self.assertEqual(check["result"], "UNCERTAIN")
+        self.assertEqual(check["confidence"], "LOW")
+        self.assertTrue(any("printed design" in note for note in result["additional_observations"]["uncertainty_notes"]))
+
+    def test_match_with_required_variant_attributes_confirmed_is_preserved(self):
+        result = self._valid_result()
+        result["item_checks"][0]["sku"] = "MUG-CER-001"
+        result["item_checks"][0]["matched_features"] = [
+            "mug shape",
+            "handle presence",
+            "blue rim colour",
+            "glaze finish",
+            "blue botanical printed design",
+        ]
+        profile = {
+            "sku": "MUG-CER-001",
+            "description": "Compare the mug shape, handle, colour, glaze finish and printed design.",
+            "reference_image_status": "LOADED",
+        }
+        self._pi._apply_conservative_identity_rules(result, [profile])
+        self.assertEqual(result["item_checks"][0]["result"], "MATCH")
+
+    def test_size_colour_and_design_must_be_explicitly_confirmed(self):
+        result = self._valid_result()
+        result["item_checks"][0]["sku"] = "NB-A5-001"
+        result["item_checks"][0]["matched_features"] = [
+            "A5 proportions",
+            "navy cover",
+            "hardcover binding",
+        ]
+        profile = {
+            "sku": "NB-A5-001",
+            "description": "Compare size, cover colour and printed design.",
+            "reference_image_status": "LOADED",
+        }
+        self._pi._apply_conservative_identity_rules(result, [profile])
+        self.assertEqual(result["item_checks"][0]["result"], "UNCERTAIN")
+        note = " ".join(result["additional_observations"]["uncertainty_notes"])
+        self.assertIn("printed design", note)
 
     def test_photo_assessment_cannot_reference_catalogue_image_position(self):
         result = self._valid_result()
