@@ -307,9 +307,11 @@ def _build_prompt(
         "5. Do not infer unlisted requirements beyond the manifest description or saved product profile. "
         "Separate object detection from product-variant checking. Set "
         "identity_assessment=CONSISTENT only when at least two distinctive physical "
-        "features visible in the packing photo(s) agree with the manifest description "
-        "or saved catalogue reference. List those features individually in "
-        "matched_features. Set DIFFERENT when a relevant visible feature conflicts. "
+        "attributes visible in the packing photo(s) agree with the manifest description "
+        "or saved catalogue reference. List those attributes individually in "
+        "matched_features. They must be different attributes, not repeated wording for "
+        "the same clue (for example, 'navy' and 'blue' are both colour descriptions). "
+        "Set DIFFERENT when a relevant visible feature conflicts. "
         "Set UNCERTAIN when a relevant feature cannot be compared, and NOT_ASSESSABLE "
         "when there is no useful product identity reference. A general object category "
         "match (for example, 'a ceramic mug is visible') is NOT enough to confirm a "
@@ -881,7 +883,15 @@ def _apply_conservative_identity_rules(ai_result: dict) -> dict:
                 "changed to a quantity discrepancy for merchant review."
             )
             continue
-        features = [str(item).strip() for item in check.get("matched_features", []) if str(item).strip()]
+        # Count independent visible attributes, not repeated wording of the same clue.
+        features = []
+        seen_features = set()
+        for item in check.get("matched_features", []):
+            feature = " ".join(str(item).split())
+            normalized_feature = feature.casefold()
+            if feature and normalized_feature not in seen_features:
+                features.append(feature)
+                seen_features.add(normalized_feature)
         if check.get("identity_assessment") != "CONSISTENT" or len(features) < 2 or observed is None:
             check["result"] = "UNCERTAIN"
             check["confidence"] = "LOW"

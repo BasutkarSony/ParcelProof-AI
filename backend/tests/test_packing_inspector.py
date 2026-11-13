@@ -182,7 +182,7 @@ class PromptConstructionTests(unittest.TestCase):
         self.assertIn("PACKING PHOTO 1", prompt)
         self.assertIn("do not use the combined provider image position", prompt)
         self.assertIn("A general object category", prompt)
-        self.assertIn("at least two distinctive physical features", prompt)
+        self.assertIn("at least two distinctive physical attributes", prompt)
 
 # ---------------------------------------------------------------------------
 # Packing inspector unit tests (no DB, no HTTP)
@@ -1446,6 +1446,19 @@ class GeminiResponseValidationTests(unittest.TestCase):
         result["item_checks"][0]["matched_features"] = ["shape"]
         self._pi._apply_conservative_identity_rules(result)
         self.assertEqual(result["item_checks"][0]["result"], "UNCERTAIN")
+
+    def test_repeated_feature_wording_does_not_count_as_two_features(self):
+        result = self._valid_result()
+        result["item_checks"][0]["matched_features"] = ["navy cover", " NAVY   COVER "]
+        self._pi._apply_conservative_identity_rules(result)
+        self.assertEqual(result["item_checks"][0]["result"], "UNCERTAIN")
+        self.assertEqual(result["item_checks"][0]["confidence"], "LOW")
+
+    def test_two_distinct_product_features_can_still_match(self):
+        result = self._valid_result()
+        result["item_checks"][0]["matched_features"] = ["navy cover", "embossed floral pattern"]
+        self._pi._apply_conservative_identity_rules(result)
+        self.assertEqual(result["item_checks"][0]["result"], "MATCH")
 
     def test_match_with_wrong_visible_quantity_is_downgraded(self):
         result = self._valid_result()
