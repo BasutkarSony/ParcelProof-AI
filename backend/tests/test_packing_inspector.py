@@ -160,7 +160,7 @@ class PromptConstructionTests(unittest.TestCase):
         prompt = self.pi._build_prompt(self.manifest)
         self.assertIn("Do not infer unlisted requirements", prompt)
         self.assertIn("A general object category", prompt)
-        self.assertIn("do not return result=MATCH", prompt)
+        self.assertIn("If a required attribute cannot be compared", prompt)
 
 
     def test_reference_images_are_labelled_as_catalogue_context_not_packed_items(self):
@@ -182,7 +182,7 @@ class PromptConstructionTests(unittest.TestCase):
         self.assertIn("PACKING PHOTO 1", prompt)
         self.assertIn("do not use the combined provider image position", prompt)
         self.assertIn("A general object category", prompt)
-        self.assertIn("at least two distinctive physical attributes", prompt)
+        self.assertIn("at least two different physical attributes", prompt)
 
 # ---------------------------------------------------------------------------
 # Packing inspector unit tests (no DB, no HTTP)
