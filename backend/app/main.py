@@ -6,6 +6,7 @@ import os
 import time
 from pathlib import Path
 from decimal import Decimal
+from io import BytesIO
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
@@ -1759,6 +1760,110 @@ async def create_packing_inspection(
         "processing_timings_ms": processing_timings_ms,
         "created_at": inspection["created_at"],
     }
+
+
+@app.post("/api/inspections/{inspection_id}/retry", status_code=201)
+async def retry_saved_packing_inspection(inspection_id: str):
+    """Retry a retryable AI_FAILED attempt using its saved, integrity-checked photos.
+
+    The failed attempt remains in history. This creates a new inspection record
+    from copies of the original stored photo bytes; it never turns a failed
+    attempt into an approvable inspection.
+    """
+    failed = get_inspection(inspection_id)
+    if failed is None:
+        raise HTTPException(status_code=404, detail="Inspection not found.")
+    if failed.get("inspection_status") != "AI_FAILED":
+        raise HTTPException(
+            status_code=409,
+            detail="Only a failed AI inspection can be retried with saved photos.",
+        )
+
+    ai_result = failed.get("ai_result") or {}
+    if not ai_result.get("retry_available"):
+        raise HTTPException(
+            status_code=409,
+            detail="This failed attempt is not marked retryable. Add a new packing photo instead.",
+        )
+
+    manifest = get_manifest(failed["manifest_id"])
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="The failed inspection's manifest was not found.")
+    if manifest.get("status") != "FINALIZED" or (
+        manifest.get("manifest_hash") != failed.get("manifest_hash_at_inspection")
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The finalized packing list has changed or is unavailable. Start a new packing check.",
+        )
+
+    inspections = list_inspections_for_manifest(manifest["id"])
+    if not inspections or inspections[0]["id"] != inspection_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Only the latest failed inspection can be retried. Open the latest packing check.",
+        )
+
+    extension_by_mime = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+    saved_uploads: list[UploadFile] = []
+    photos = failed.get("photos") or []
+    if not photos:
+        raise HTTPException(status_code=409, detail="The failed attempt has no saved photos to retry.")
+
+    for photo in photos:
+        photo_id = photo.get("id", "")
+        extension = extension_by_mime.get(photo.get("mime_type"))
+        if not extension:
+            raise HTTPException(
+                status_code=415,
+                detail="A saved photo uses an unsupported format and cannot be retried.",
+            )
+
+        if photo.get("storage_path"):
+            try:
+                photo_bytes = await run_in_threadpool(
+                    object_storage.download_private_object,
+                    photo["storage_path"],
+                )
+            except object_storage.StorageConfigurationError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from None
+            except object_storage.StorageOperationError:
+                raise HTTPException(
+                    status_code=502,
+                    detail="A saved packing photo could not be retrieved. The original attempt is unchanged.",
+                ) from None
+        else:
+            photo_path = packing_inspector_service.PHOTO_DIR / f"{photo_id}{extension}"
+            if not photo_path.is_file():
+                raise HTTPException(
+                    status_code=409,
+                    detail="A saved packing photo is unavailable. Upload a new photo to start another check.",
+                )
+            photo_bytes = await run_in_threadpool(photo_path.read_bytes)
+
+        if (
+            len(photo_bytes) != int(photo.get("size_bytes") or -1)
+            or hashlib.sha256(photo_bytes).hexdigest() != photo.get("sha256")
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="A saved packing photo no longer matches its recorded hash and size. It was not retried.",
+            )
+
+        saved_uploads.append(
+            UploadFile(
+                file=BytesIO(photo_bytes),
+                filename=f"saved-{photo_id}{extension}",
+            )
+        )
+
+    # Reuse the normal upload-and-inspection path so the new attempt gets its
+    # own immutable photo records, hashes, provider result and review state.
+    return await create_packing_inspection(manifest["id"], saved_uploads)
 
 
 @app.get("/api/manifests/{manifest_id}/inspections")
