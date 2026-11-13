@@ -182,7 +182,7 @@ class PromptConstructionTests(unittest.TestCase):
         self.assertIn("PACKING PHOTO 1", prompt)
         self.assertIn("do not use the combined provider image position", prompt)
         self.assertIn("A general object category", prompt)
-        self.assertIn("at least two distinctive physical features", prompt)
+        self.assertIn("at least two distinctive physical attributes", prompt)
 
 # ---------------------------------------------------------------------------
 # Packing inspector unit tests (no DB, no HTTP)
