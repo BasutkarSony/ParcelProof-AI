@@ -205,10 +205,14 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
             self.assertEqual(retried["inspection_status"], "PENDING_HUMAN_REVIEW")
             self.assertEqual(retried["photo_count"], 1)
             attempts = store.list_inspections_for_manifest(self.manifest["id"])
-            self.assertEqual(len(attempts), 2)
-            self.assertEqual(store.get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
+            # setUp creates one earlier successful inspection before this failure.
+            self.assertEqual(len(attempts), 3)
+            self.assertEqual(attempts[0]["id"], retried["inspection_id"])
             self.assertEqual(attempts[0]["inspection_status"], "PENDING_HUMAN_REVIEW")
+            self.assertEqual(attempts[1]["id"], failed["id"])
             self.assertEqual(attempts[1]["inspection_status"], "AI_FAILED")
+            self.assertEqual(store.get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
+            self.assertEqual(attempts[2]["inspection_status"], "PENDING_HUMAN_REVIEW")
 
     def test_saved_failed_inspection_retry_rejects_modified_photo_bytes(self):
         original_photo = b"\xff\xd8\xff" + b"original-packed-photo"
@@ -233,7 +237,8 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
 
             self.assertEqual(retry_response.exception.status_code, 409)
             self.assertEqual(store.get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
-            self.assertEqual(len(store.list_inspections_for_manifest(self.manifest["id"])), 1)
+            # The fixture's original inspection and the failed attempt remain unchanged.
+            self.assertEqual(len(store.list_inspections_for_manifest(self.manifest["id"])), 2)
 
     def test_native_browser_review_form_persists_decision_and_redirects(self):
         with patch.dict(os.environ, {
