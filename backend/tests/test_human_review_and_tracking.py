@@ -180,7 +180,8 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
                             asyncio.run(create_packing_inspection(self.manifest["id"], [upload]))
 
                     self.assertEqual(failed_response.exception.status_code, 503)
-                    failed = store.list_inspections_for_manifest(self.manifest["id"])[0]
+                    failed_summary = store.list_inspections_for_manifest(self.manifest["id"])[0]
+                    failed = store.get_inspection(failed_summary["id"])
                     self.assertEqual(failed["inspection_status"], "AI_FAILED")
                     self.assertTrue(failed["ai_result"]["retry_available"])
                     saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
@@ -221,7 +222,8 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
                         with self.assertRaises(HTTPException):
                             asyncio.run(create_packing_inspection(self.manifest["id"], [upload]))
 
-                    failed = store.list_inspections_for_manifest(self.manifest["id"])[0]
+                    failed_summary = store.list_inspections_for_manifest(self.manifest["id"])[0]
+                    failed = store.get_inspection(failed_summary["id"])
                     saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
                     saved_photo.write_bytes(b"\\xff\\xd8\\xff" + b"tampered-packed-photo")
 
