@@ -1461,28 +1461,30 @@ class GeminiResponseValidationTests(unittest.TestCase):
         self.assertEqual(result["item_checks"][0]["result"], "MATCH")
 
     def test_recorded_mug_wrong_design_false_positive_is_downgraded(self):
-        # Captured Gemini output from the recorded demo: shape, handle and finish
-        # were reported, while the catalogue's printed design was not confirmed.
+        fixture_path = (
+            Path(__file__).resolve().parent
+            / "fixtures"
+            / "recorded_mug_wrong_design.json"
+        )
+        case = json.loads(fixture_path.read_text(encoding="utf-8"))
         result = self._valid_result()
-        result["item_checks"][0]["sku"] = "MUG-CER-001"
-        result["item_checks"][0]["matched_features"] = [
-            "ceramic coffee mug shape",
-            "handle presence",
-            "neutral glaze finish",
-        ]
+        result["item_checks"][0]["sku"] = case["product"]["sku"]
+        result["item_checks"][0]["matched_features"] = (
+            case["recorded_model_result"]["matched_features"]
+        )
         profile = {
-            "sku": "MUG-CER-001",
-            "description": (
-                "Ceramic coffee mug. Compare the overall mug shape, handle, colour, "
-                "glaze finish and any printed design with the catalogue reference."
-            ),
+            "sku": case["product"]["sku"],
+            "description": case["product"]["identity_description"],
             "reference_image_status": "LOADED",
         }
         self._pi._apply_conservative_identity_rules(result, [profile])
         check = result["item_checks"][0]
-        self.assertEqual(check["result"], "UNCERTAIN")
+        self.assertEqual(check["result"], case["expected_result"])
         self.assertEqual(check["confidence"], "LOW")
-        self.assertTrue(any("printed design" in note for note in result["additional_observations"]["uncertainty_notes"]))
+        self.assertTrue(any(
+            "printed design" in note
+            for note in result["additional_observations"]["uncertainty_notes"]
+        ))
 
     def test_match_with_required_variant_attributes_confirmed_is_preserved(self):
         result = self._valid_result()
