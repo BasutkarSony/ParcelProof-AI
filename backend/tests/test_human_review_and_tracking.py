@@ -34,6 +34,7 @@ from app.main import (
     get_inspection_by_id,
     create_packing_inspection,
     verify_inspection_photo_integrity,
+    retry_saved_packing_inspection,
 )
 
 
@@ -162,6 +163,72 @@ class HumanReviewAndTrackingTests(unittest.TestCase):
             self.assertEqual(len(failed["photos"]), 1)
             saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
             self.assertTrue(saved_photo.is_file())
+
+    def test_saved_failed_inspection_can_be_retried_after_reload(self):
+        original_photo = b"\\xff\\xd8\\xff" + b"original-packed-photo"
+        with tempfile.TemporaryDirectory() as photo_dir:
+            with patch("app.packing_inspector.PHOTO_DIR", Path(photo_dir)):
+                with patch.dict(os.environ, {"SUPABASE_URL": ""}):
+                    upload = UploadFile(filename="packing-proof.jpg", file=BytesIO(original_photo))
+                    with patch(
+                        "app.main.run_inspection",
+                        side_effect=GeminiUnavailableError("Gemini temporarily unavailable"),
+                    ):
+                        with self.assertRaises(HTTPException) as failed_response:
+                            asyncio.run(create_packing_inspection(self.manifest["id"], [upload]))
+
+                    self.assertEqual(failed_response.exception.status_code, 503)
+                    failed = store.list_inspections_for_manifest(self.manifest["id"])[0]
+                    self.assertEqual(failed["inspection_status"], "AI_FAILED")
+                    self.assertTrue(failed["ai_result"]["retry_available"])
+                    saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
+                    self.assertEqual(saved_photo.read_bytes(), original_photo)
+
+                    with patch(
+                        "app.main.run_inspection",
+                        return_value={
+                            "model_used": "gemini-test-model",
+                            "ai_result": {
+                                "inspection_state": "MATCH",
+                                "additional_observations": {"uncertainty_notes": []},
+                                "item_checks": [],
+                            },
+                        },
+                    ):
+                        retried = asyncio.run(retry_saved_packing_inspection(failed["id"]))
+
+            self.assertNotEqual(retried["inspection_id"], failed["id"])
+            self.assertEqual(retried["inspection_status"], "PENDING_HUMAN_REVIEW")
+            self.assertEqual(retried["photo_count"], 1)
+            attempts = store.list_inspections_for_manifest(self.manifest["id"])
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
+            self.assertEqual(attempts[0]["inspection_status"], "PENDING_HUMAN_REVIEW")
+            self.assertEqual(attempts[1]["inspection_status"], "AI_FAILED")
+
+    def test_saved_failed_inspection_retry_rejects_modified_photo_bytes(self):
+        original_photo = b"\\xff\\xd8\\xff" + b"original-packed-photo"
+        with tempfile.TemporaryDirectory() as photo_dir:
+            with patch("app.packing_inspector.PHOTO_DIR", Path(photo_dir)):
+                with patch.dict(os.environ, {"SUPABASE_URL": ""}):
+                    upload = UploadFile(filename="packing-proof.jpg", file=BytesIO(original_photo))
+                    with patch(
+                        "app.main.run_inspection",
+                        side_effect=GeminiUnavailableError("Gemini temporarily unavailable"),
+                    ):
+                        with self.assertRaises(HTTPException):
+                            asyncio.run(create_packing_inspection(self.manifest["id"], [upload]))
+
+                    failed = store.list_inspections_for_manifest(self.manifest["id"])[0]
+                    saved_photo = Path(photo_dir) / f"{failed['photos'][0]['id']}.jpg"
+                    saved_photo.write_bytes(b"\\xff\\xd8\\xff" + b"tampered-packed-photo")
+
+                    with self.assertRaises(HTTPException) as retry_response:
+                        asyncio.run(retry_saved_packing_inspection(failed["id"]))
+
+            self.assertEqual(retry_response.exception.status_code, 409)
+            self.assertEqual(get_inspection(failed["id"])["inspection_status"], "AI_FAILED")
+            self.assertEqual(len(store.list_inspections_for_manifest(self.manifest["id"])), 1)
 
     def test_native_browser_review_form_persists_decision_and_redirects(self):
         with patch.dict(os.environ, {
