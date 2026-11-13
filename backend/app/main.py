@@ -1863,7 +1863,11 @@ async def retry_saved_packing_inspection(inspection_id: str):
 
     # Reuse the normal upload-and-inspection path so the new attempt gets its
     # own immutable photo records, hashes, provider result and review state.
-    return await create_packing_inspection(manifest["id"], saved_uploads)
+    try:
+        return await create_packing_inspection(manifest["id"], saved_uploads)
+    finally:
+        for upload in saved_uploads:
+            await upload.close()
 
 
 @app.get("/api/manifests/{manifest_id}/inspections")
@@ -1884,6 +1888,7 @@ def list_manifest_inspections(manifest_id: str):
                 "manifest_hash_at_inspection": item["manifest_hash_at_inspection"],
                 "created_at": item["created_at"],
                 "latest_review": item["latest_review"],
+                "retry_available": bool((item.get("ai_result") or {}).get("retry_available")),
             }
             for item in inspections
         ],
